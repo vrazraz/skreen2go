@@ -74,6 +74,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private var recordingHotKey = false
 
     var onClose: (() -> Void)?
+    private var isRunningModal = false
 
     init(settings: SettingsStore) {
         self.settings = settings
@@ -96,16 +97,28 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         if let hotKeyRecordingMonitor { NSEvent.removeMonitor(hotKeyRecordingMonitor) }
     }
 
-    func show() {
+    /// - Parameter modal: run a modal session, so whatever is behind cannot be touched
+    ///   until the settings window is dismissed (PRD §8).
+    func show(modal: Bool = false) {
         refreshControls()
-        window?.center()
-        window?.makeKeyAndOrderFront(nil)
+        guard let window else { return }
+        window.center()
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        guard modal, !isRunningModal else { return }
+        isRunningModal = true
+        NSApp.runModal(for: window)
     }
 
     func windowWillClose(_ notification: Notification) {
         stopRecordingHotKey()
         colorWell?.deactivate()
+        // Leaving the modal session running would wedge the app in a nested event loop.
+        if isRunningModal {
+            isRunningModal = false
+            NSApp.stopModal()
+        }
         onClose?()
     }
 

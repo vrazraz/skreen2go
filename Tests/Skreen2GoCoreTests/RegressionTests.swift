@@ -637,6 +637,68 @@ struct RegressionTests {
         #expect(OverlayTool.none.annotationKind == nil)
     }
 
+    // MARK: - Settings from the action panel
+
+    @Test("The settings button neither captures nor drops the frame")
+    func settingsKeepsTheFrame() {
+        let controller = CaptureController(settings: makeSettings())
+        var shown = 0
+        controller.onShowSettings = { shown += 1 }
+        var captured = 0
+        controller.onImageCaptured = { _, _, _ in captured += 1 }
+
+        let payload = SelectionCapture(
+            area: CGRect(x: 10, y: 10, width: 100, height: 80),
+            annotations: [],
+            window: nil
+        )
+        controller.testPerform(.settings, payload: payload)
+
+        #expect(shown == 1, "the settings window was not requested")
+        #expect(captured == 0, "settings must not take a screenshot")
+        #expect(controller.testHasCaptureInFlight == false, "settings must not start a capture")
+    }
+
+    @Test("The overlay routes the settings button through to the controller")
+    func overlayDeliversSettingsAction() {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+
+        var received: SelectionAction?
+        overlay.onSelectionAction = { action, _ in received = action }
+        overlay.testDeliver(.settings)
+
+        #expect(received == .settings)
+    }
+
+    @Test("A colour survives a round trip through the settings store")
+    func defaultColourRoundTrips() {
+        let settings = makeSettings()
+        for colour in [NSColor.systemBlue, .systemGreen, .white, .black, .systemOrange] {
+            settings.defaultColor = colour
+            #expect(
+                ColorPaletteView.sameColor(settings.defaultColor, colour),
+                "\(colour) came back as \(settings.defaultColor)"
+            )
+        }
+    }
+
+    @Test("A default colour changed in settings is adopted by the overlay")
+    func overlayAdoptsChangedDefaultColour() {
+        let settings = makeSettings()
+        let overlay = CaptureOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            settings: settings
+        )
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testPickPaletteColor(.systemGreen)
+        #expect(ColorPaletteView.sameColor(overlay.testCurrentColor, .systemGreen))
+
+        settings.defaultColor = .systemBlue
+        overlay.adoptDefaultColor()
+        #expect(ColorPaletteView.sameColor(overlay.testCurrentColor, .systemBlue))
+    }
+
     // MARK: - Colour palette lives above the dimming
 
     @Test("The palette opens under the colour button and is reachable")
@@ -750,10 +812,12 @@ struct RegressionTests {
                 hints.insert(hint)
             }
         }
-        // Ten controls: three tools, colour, undo, redo, copy, save, save-as, cancel.
-        #expect(hints.count == 10, "found hints: \(hints.sorted())")
+        // Eleven controls: three tools, colour, undo, redo, settings, copy, save,
+        // save-as, cancel.
+        #expect(hints.count == 11, "found hints: \(hints.sorted())")
         #expect(hints.contains("Стрелка"))
         #expect(hints.contains("Цвет"))
+        #expect(hints.contains("Настройки"))
     }
 
     @Test("Hovering a control makes its hint the active one")
@@ -795,14 +859,93 @@ struct RegressionTests {
         #expect(overlay.testActiveHint == nil)
     }
 
-    @Test("The capture flash is decorative and cannot swallow clicks")
-    func captureFlashIsInert() {
-        #expect(CaptureFlash.duration > 0)
-        #expect(CaptureFlash.peakAlpha > 0 && CaptureFlash.peakAlpha < 1)
+    @Test("The flight starts at the region and lands on the icon")
+    func flightEndpoints() {
+        let start = CGRect(x: 200, y: 100, width: 400, height: 300)
+        let end = CGRect(x: 1400, y: 950, width: 32, height: 32)
 
-        // A degenerate rect must be ignored rather than flashing an empty panel.
-        CaptureFlash.shared.flash(.zero)
-        CaptureFlash.shared.flash(CGRect(x: 100, y: 100, width: 200, height: 150))
+        let first = CaptureFlash.frame(at: 0, from: start, to: end)
+        #expect(isClose(first.midX, start.midX, tolerance: 0.001))
+        #expect(isClose(first.width, start.width, tolerance: 0.001))
+
+        let last = CaptureFlash.frame(at: 1, from: start, to: end)
+        #expect(isClose(last.midX, end.midX, tolerance: 0.001))
+        #expect(isClose(last.midY, end.midY, tolerance: 0.001))
+        #expect(isClose(last.width, end.width, tolerance: 0.001))
+    }
+
+    @Test("The path curves rather than running straight")
+    func flightPathCurves() {
+        let start = CGPoint(x: 200, y: 100)
+        let end = CGPoint(x: 1400, y: 950)
+
+        let midway = CaptureFlash.center(at: 0.5, from: start, to: end)
+        let straight = CGPoint(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2)
+
+        // A real arc, not the chord.
+        let deviation = hypot(midway.x - straight.x, midway.y - straight.y)
+        #expect(deviation > 40, "path deviates only \(deviation)pt from the straight line")
+        // The control point pulls it sideways first, so it stays below the chord.
+        #expect(midway.y < straight.y)
+    }
+
+    @Test("The shot shrinks steadily on the way")
+    func flightShrinksMonotonically() {
+        let start = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let end = CGRect(x: 1400, y: 950, width: 32, height: 32)
+
+        var previous = CGFloat.greatestFiniteMagnitude
+        for step in 0...10 {
+            let width = CaptureFlash.frame(at: CGFloat(step) / 10, from: start, to: end).width
+            #expect(width <= previous + 0.001, "width grew at step \(step)")
+            previous = width
+        }
+        #expect(previous < 40)
+    }
+
+    @Test("It stays solid at first, then fades out completely")
+    func flightFade() {
+        #expect(CaptureFlash.alpha(at: 0) == 1)
+        #expect(CaptureFlash.alpha(at: CaptureFlash.fadeStart) == 1)
+        #expect(CaptureFlash.alpha(at: 1) == 0)
+
+        var previous: CGFloat = 1
+        for step in 0...10 {
+            let alpha = CaptureFlash.alpha(at: CGFloat(step) / 10)
+            #expect(alpha <= previous + 0.001, "alpha rose at step \(step)")
+            previous = alpha
+        }
+    }
+
+    @Test("Easing is clamped and monotonic")
+    func flightEasing() {
+        #expect(CaptureFlash.eased(-1) == 0)
+        #expect(CaptureFlash.eased(0) == 0)
+        #expect(CaptureFlash.eased(1) == 1)
+        #expect(CaptureFlash.eased(2) == 1)
+        #expect(CaptureFlash.eased(0.5) > 0.4 && CaptureFlash.eased(0.5) < 0.6)
+    }
+
+    @Test("Without a status item the flight still has somewhere to land")
+    func flightFallbackDestination() throws {
+        let screen = try #require(NSScreen.main)
+        let rect = CGRect(x: screen.frame.midX, y: screen.frame.midY, width: 200, height: 150)
+        let destination = CaptureFlash.fallbackDestination(for: rect)
+
+        #expect(destination.width > 0 && destination.height > 0)
+        // Up in the menu bar corner, not left in the middle of the screen.
+        #expect(destination.midY > screen.frame.midY)
+        #expect(destination.midX > screen.frame.midX)
+    }
+
+    @Test("A degenerate region is ignored instead of flying an empty panel")
+    func flightIgnoresDegenerateRegion() {
+        let image = makeImage(
+            from: makeCGImage(pixelWidth: 40, pixelHeight: 40),
+            pointSize: CGSize(width: 20, height: 20)
+        )
+        CaptureFlash.shared.fly(image, from: .zero)
+        CaptureFlash.shared.fly(image, from: CGRect(x: 0, y: 0, width: 1, height: 1))
     }
 
     // MARK: - Window capture shares the area flow

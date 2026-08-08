@@ -354,9 +354,10 @@ enum SelectionBorder {
 }
 
 
-enum SelectionAction {
-    /// Hand off to the full editor (blur, visual cursor, delete, clear, settings).
+enum SelectionAction: Equatable {
+    /// Hand off to the full editor (blur, visual cursor, delete, clear).
     case annotate
+    case settings
     case copy
     case save
     case saveAs
@@ -607,6 +608,7 @@ final class SelectionActionBar: NSView {
 
         stack.addArrangedSubview(button("arrow.uturn.backward", "Отменить (⌘Z)", #selector(undo)))
         stack.addArrangedSubview(button("arrow.uturn.forward", "Повторить (⇧⌘Z)", #selector(redo)))
+        stack.addArrangedSubview(button("gearshape", "Настройки", #selector(settings)))
         stack.addArrangedSubview(separator())
         stack.addArrangedSubview(button("doc.on.doc", "Копировать", #selector(copyShot)))
         stack.addArrangedSubview(button("square.and.arrow.down", "Сохранить", #selector(save)))
@@ -698,6 +700,7 @@ final class SelectionActionBar: NSView {
     @objc private func colorTapped() { onColorRequest() }
     @objc private func undo() { onUndo() }
     @objc private func redo() { onRedo() }
+    @objc private func settings() { onAction(.settings) }
     @objc private func copyShot() { onAction(.copy) }
     @objc private func save() { onAction(.save) }
     @objc private func saveAs() { onAction(.saveAs) }
@@ -828,6 +831,12 @@ final class CaptureOverlayView: NSView {
             around: selection,
             within: bounds
         )
+    }
+
+    func adoptDefaultColor() {
+        currentColor = settings.defaultColor
+        actionBar?.setColor(currentColor)
+        colorPalette?.setSelected(currentColor)
     }
 
     private func setTool(_ tool: OverlayTool) {
@@ -1549,6 +1558,7 @@ final class CaptureOverlayView: NSView {
 
     // Exposed for tests.
     var testSelection: CGRect? { selection }
+    func testDeliver(_ action: SelectionAction) { deliver(action) }
     var testActionBarIsVisible: Bool { actionBar.map { !$0.isHidden } ?? false }
     var testActionBarFrame: CGRect? { actionBar.flatMap { $0.isHidden ? nil : $0.frame } }
     var testTool: OverlayTool { tool }
@@ -1620,6 +1630,7 @@ final class CaptureController {
     private var escapeMonitor: Any?
     private var isCapturing = false
     private var isRequestingAccess = false
+    private(set) var isPresentingSettings = false
     private var captureTask: Task<Void, Never>?
     /// Bumped whenever a capture session is abandoned. Results carrying an old generation
     /// are dropped, so a slow capture can never open an editor over a newer one.
@@ -1627,6 +1638,9 @@ final class CaptureController {
 
     var onImageCaptured: ((NSImage, CGRect, [Annotation]) -> Void)?
     var onError: ((String) -> Void)?
+    /// Shows the settings window. Owned by the app delegate, which keeps a single
+    /// instance; the flag it is passed lifts the window above the overlay.
+    var onShowSettings: (() -> Void)?
 
     init(settings: SettingsStore = .shared) {
         self.settings = settings
@@ -1705,7 +1719,7 @@ final class CaptureController {
     private func installEscapeFallbackMonitor() {
         removeEscapeFallbackMonitor()
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.isCapturing else { return event }
+            guard let self, self.isCapturing, !self.isPresentingSettings else { return event }
             // Escape closes the colour palette first rather than aborting the capture.
             if event.keyCode == 53, self.overlayView?.hideColorPalette() == true {
                 return nil
@@ -1762,6 +1776,31 @@ final class CaptureController {
         dismissOverlay()
     }
 
+    private func presentSettings() {
+        let colorBefore = settings.defaultColor
+        // `NSApp.runModal` pins its window to `.modalPanel` (8) and keeps reasserting it,
+        // so raising the settings window above the overlay is not possible. The overlay
+        // steps below that level for the duration instead.
+        let overlayLevel = overlayWindow?.level
+        overlayWindow?.level = .floating
+
+        isPresentingSettings = true
+        onShowSettings?()
+        isPresentingSettings = false
+        if let overlayLevel { overlayWindow?.level = overlayLevel }
+
+        // Hand focus back to the overlay, which stayed up the whole time.
+        if let overlayWindow {
+            overlayWindow.makeKeyAndOrderFront(nil)
+            if let overlayView { overlayWindow.makeFirstResponder(overlayView) }
+        }
+        // Only adopt the default colour if it was actually changed in there — otherwise a
+        // colour picked from the palette would be silently reset.
+        if !ColorPaletteView.sameColor(colorBefore, settings.defaultColor) {
+            overlayView?.adoptDefaultColor()
+        }
+    }
+
     private func abandonCaptureInFlight() {
         captureTask?.cancel()
         captureTask = nil
@@ -1804,9 +1843,16 @@ final class CaptureController {
     /// Runs one of the action-bar buttons: capture first, then either hand the image to
     /// the editor or finish the job outright.
     private func perform(_ action: SelectionAction, payload: SelectionCapture) {
-        if case .cancel = action {
+        switch action {
+        case .cancel:
             cancel()
             return
+        case .settings:
+            // Settings leaves the frame and its annotations exactly where they are.
+            presentSettings()
+            return
+        default:
+            break
         }
 
         dismissOverlay()
@@ -1827,14 +1873,14 @@ final class CaptureController {
                     // The full editor keeps the annotations drawn on the overlay.
                     self.onImageCaptured?(image, area, annotations)
                 case .copy:
-                    CaptureFlash.shared.flash(area)
+                    CaptureFlash.shared.fly(image, from: area)
                     self.copy(image, annotations: annotations)
                 case .save:
-                    CaptureFlash.shared.flash(area)
+                    CaptureFlash.shared.fly(image, from: area)
                     self.save(image, annotations: annotations)
                 case .saveAs:
                     self.saveAs(image, annotations: annotations)
-                case .cancel:
+                case .cancel, .settings:
                     break
                 }
             }
@@ -1892,6 +1938,9 @@ final class CaptureController {
 
     // Exposed for tests.
     var testCaptureGeneration: Int { captureGeneration }
+    func testPerform(_ action: SelectionAction, payload: SelectionCapture) {
+        perform(action, payload: payload)
+    }
     var testHasCaptureInFlight: Bool { captureTask != nil }
     func testAbandonCaptureInFlight() { abandonCaptureInFlight() }
 

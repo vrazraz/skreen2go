@@ -152,6 +152,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         captureController.onError = { [weak self] message in
             self?.showCaptureError(message)
         }
+        // The flight animation lands on the menu bar icon, whose position only the status
+        // item knows.
+        CaptureFlash.shared.destinationProvider = { [weak self] in
+            self?.statusItem?.button?.window?.frame
+        }
+        captureController.onShowSettings = { [weak self] in
+            // Called while the capture overlay is up, so it has to sit above it.
+            self?.presentSettings(modal: true)
+        }
 
         hotKeyMonitor = HotKeyMonitor(settings: settings) { [weak self] in
             self?.startCapture()
@@ -186,7 +195,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         captureItem.target = self
         menu.addItem(captureItem)
 
-        let settingsItem = NSMenuItem(title: "Настройки…", action: #selector(showSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "Настройки…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
         settingsItem.keyEquivalentModifierMask = [.command]
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -228,11 +237,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         captureController.start()
     }
 
-    @objc private func showSettings() {
+    @objc private func showSettingsFromMenu() {
+        presentSettings(modal: false)
+    }
+
+    private func presentSettings(modal: Bool) {
         // Reuse the existing controller. Replacing it dropped the only strong reference
         // to a window that was still on screen.
         if let settingsController {
-            settingsController.show()
+            settingsController.show(modal: modal)
             return
         }
         let controller = SettingsPanelController(settings: settings)
@@ -240,7 +253,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsController = nil
         }
         settingsController = controller
-        controller.show()
+        controller.show(modal: modal)
     }
 
     @objc private func terminate() {
@@ -270,7 +283,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "Открыть настройки")
         alert.addButton(withTitle: "Закрыть")
         if alert.runModal() == .alertFirstButtonReturn {
-            showSettings()
+            presentSettings(modal: false)
         }
     }
 

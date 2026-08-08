@@ -184,8 +184,11 @@ final class SettingsStore {
     var defaultColor: NSColor {
         get {
             guard defaults.object(forKey: Key.colorRed) != nil else { return .systemRed }
+            // Read back in the same space the components were written in. Reading them as
+            // calibratedRGB meant the colour you got out never quite matched the one you
+            // put in.
             return NSColor(
-                calibratedRed: defaults.double(forKey: Key.colorRed),
+                deviceRed: defaults.double(forKey: Key.colorRed),
                 green: defaults.double(forKey: Key.colorGreen),
                 blue: defaults.double(forKey: Key.colorBlue),
                 alpha: defaults.double(forKey: Key.colorAlpha)

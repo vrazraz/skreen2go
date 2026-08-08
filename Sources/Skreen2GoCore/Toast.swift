@@ -188,33 +188,133 @@ final class ToastPresenter {
 }
 
 
-/// A brief flash over the region that was just captured. The overlay is already gone by
-/// then, so without it a copy or save gives no sign of *what* was taken.
+/// The "captured" gesture: the shot shrinks and flies along an arc into the menu bar icon.
+///
+/// The genie warp macOS uses for minimising is a private WindowServer effect
+/// (`CGSSetWindowWarp`), so this is the *scale* variant plus a curved path — close in
+/// feel, no private API and no per-frame mesh deformation.
+///
+/// `NSWindow.animator()` only interpolates straight between two frames, so the flight is
+/// stepped by a timer instead; that is what buys the curve.
 @MainActor
 final class CaptureFlash {
     static let shared = CaptureFlash()
 
-    static let duration: TimeInterval = 0.32
-    static let peakAlpha: CGFloat = 0.55
+    static let duration: TimeInterval = 0.42
+    private static let frameRate: TimeInterval = 1.0 / 60.0
+    /// Alpha holds until this much of the flight is done, then fades out.
+    static let fadeStart: CGFloat = 0.45
+
+    /// Where the flight ends. Supplied by the app delegate, which owns the status item.
+    var destinationProvider: (() -> CGRect?)?
 
     private var panel: NSPanel?
+    private var imageView: NSImageView?
+    private var timer: Timer?
+    private var startFrame: CGRect = .zero
+    private var endFrame: CGRect = .zero
+    private var startedAt: TimeInterval = 0
 
     private init() {}
 
-    func flash(_ rect: CGRect) {
-        guard rect.width > 0, rect.height > 0 else { return }
-        let panel = ensurePanel()
-        panel.setFrame(rect, display: false)
-        panel.alphaValue = Self.peakAlpha
-        panel.orderFrontRegardless()
+    // MARK: - Geometry (pure, so the path is testable without animating)
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = Self.duration
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak panel] in
-            panel?.orderOut(nil)
+    /// Eases the raw time fraction; smoothstep keeps the start and the landing gentle.
+    static func eased(_ t: CGFloat) -> CGFloat {
+        let clamped = min(max(t, 0), 1)
+        return clamped * clamped * (3 - 2 * clamped)
+    }
+
+    /// Quadratic Bézier with the control point at (end.x, start.y): the shot sets off
+    /// sideways and swoops up into the icon rather than sliding along a straight line.
+    static func center(at progress: CGFloat, from start: CGPoint, to end: CGPoint) -> CGPoint {
+        let t = eased(progress)
+        let inverse = 1 - t
+        let control = CGPoint(x: end.x, y: start.y)
+        return CGPoint(
+            x: inverse * inverse * start.x + 2 * inverse * t * control.x + t * t * end.x,
+            y: inverse * inverse * start.y + 2 * inverse * t * control.y + t * t * end.y
+        )
+    }
+
+    static func frame(at progress: CGFloat, from start: CGRect, to end: CGRect) -> CGRect {
+        let t = eased(progress)
+        let size = CGSize(
+            width: start.width + (end.width - start.width) * t,
+            height: start.height + (end.height - start.height) * t
+        )
+        let middle = center(
+            at: progress,
+            from: CGPoint(x: start.midX, y: start.midY),
+            to: CGPoint(x: end.midX, y: end.midY)
+        )
+        return CGRect(
+            x: middle.x - size.width / 2,
+            y: middle.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    static func alpha(at progress: CGFloat) -> CGFloat {
+        guard progress > fadeStart else { return 1 }
+        let remaining = (progress - fadeStart) / (1 - fadeStart)
+        return max(0, 1 - eased(remaining))
+    }
+
+    /// Falls back to the top-right corner, where menu bar extras live, if the status item
+    /// cannot be located.
+    static func fallbackDestination(for rect: CGRect) -> CGRect {
+        let screen = NSScreen.screens.first { $0.frame.intersects(rect) } ?? NSScreen.main
+        guard let frame = screen?.frame else {
+            return CGRect(x: rect.midX, y: rect.maxY, width: 32, height: 32)
         }
+        return CGRect(x: frame.maxX - 60, y: frame.maxY - 32, width: 32, height: 32)
+    }
+
+    // MARK: - Animation
+
+    func fly(_ image: NSImage, from rect: CGRect) {
+        guard rect.width > 1, rect.height > 1 else { return }
+
+        let destination = destinationProvider?() ?? Self.fallbackDestination(for: rect)
+        let panel = ensurePanel()
+        imageView?.image = image
+
+        startFrame = rect
+        endFrame = destination
+        startedAt = CFAbsoluteTimeGetCurrent()
+
+        panel.setFrame(rect, display: false)
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        timer?.invalidate()
+        let timer = Timer(timeInterval: Self.frameRate, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.step() }
+        }
+        // `.common` so the flight keeps running during menu tracking or a modal session.
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    private func step() {
+        guard let panel else { return }
+        let progress = CGFloat((CFAbsoluteTimeGetCurrent() - startedAt) / Self.duration)
+
+        guard progress < 1 else {
+            finish()
+            return
+        }
+        panel.setFrame(Self.frame(at: progress, from: startFrame, to: endFrame), display: true)
+        panel.alphaValue = Self.alpha(at: progress)
+    }
+
+    private func finish() {
+        timer?.invalidate()
+        timer = nil
+        panel?.orderOut(nil)
+        // Do not pin a full-screen bitmap in memory between shots.
+        imageView?.image = nil
     }
 
     private func ensurePanel() -> NSPanel {
@@ -227,15 +327,26 @@ final class CaptureFlash {
             defer: false
         )
         panel.isOpaque = false
-        panel.backgroundColor = .white
-        panel.hasShadow = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
         // Purely decorative: it must never swallow a click.
         panel.ignoresMouseEvents = true
+
+        let view = NSImageView()
+        view.imageScaling = .scaleAxesIndependently
+        view.wantsLayer = true
+        view.layer?.masksToBounds = true
+        view.layer?.cornerRadius = 4
+        view.layer?.borderWidth = 1
+        view.layer?.borderColor = NSColor.white.withAlphaComponent(0.6).cgColor
+        panel.contentView = view
+
         self.panel = panel
+        self.imageView = view
         return panel
     }
 }
