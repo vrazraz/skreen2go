@@ -49,6 +49,25 @@ enum ScreenshotNaming {
         case .jpeg: return "jpg"
         }
     }
+
+    static func uniqueURL(
+        in folder: URL,
+        format: OutputFormat,
+        date: Date,
+        fileManager: FileManager = .default
+    ) -> URL {
+        let fileName = fileName(for: format, date: date)
+        let baseName = (fileName as NSString).deletingPathExtension
+        let ext = fileExtension(for: format)
+        var candidate = folder.appendingPathComponent(fileName)
+        var suffix = 2
+
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = folder.appendingPathComponent("\(baseName) \(suffix).\(ext)")
+            suffix += 1
+        }
+        return candidate
+    }
 }
 
 enum AnnotationRenderer {
@@ -330,17 +349,19 @@ enum ScreenshotOutput {
     }
 
     static func save(_ data: Data, format: OutputFormat, settings: SettingsStore) throws -> URL {
-        let folder = settings.outputFolderURL
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent(ScreenshotNaming.fileName(for: format, date: Date()))
-        try data.write(to: url, options: .atomic)
+        let url = try settings.withOutputFolderAccess { folder in
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = ScreenshotNaming.uniqueURL(in: folder, format: format, date: Date())
+            try data.write(to: url, options: .atomic)
+            return url
+        }
         report(.saved(url), settings: settings)
         return url
     }
 
     static func makeSavePanel(format: OutputFormat) -> NSSavePanel {
         let panel = NSSavePanel()
-        panel.title = "Сохранить скриншот"
+        panel.title = "savePanel.title".localized("Save Screenshot")
         panel.nameFieldStringValue = ScreenshotNaming.fileName(for: format, date: Date())
         panel.allowedContentTypes = [format == .png ? .png : .jpeg]
         panel.canCreateDirectories = true
@@ -365,7 +386,7 @@ enum ScreenshotOutput {
 
     static func showError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Ошибка"
+        alert.messageText = "error.title".localized("Error")
         alert.informativeText = message
         alert.runModal()
     }
@@ -918,13 +939,13 @@ final class EditorToolbarView: NSVisualEffectView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
 
-        // Icon buttons with tooltips: the previous text labels ("Сохранить как…",
-        // "Копировать", …) needed far more width than the bar ever had.
-        stack.addArrangedSubview(toolButton("cursorarrow", "Выбор и перемещение", key: "select", #selector(selectTool)))
-        stack.addArrangedSubview(toolButton("arrow.up.right", "Стрелка", key: "arrow", #selector(arrowTool)))
-        stack.addArrangedSubview(toolButton("rectangle", "Рамка", key: "rectangle", #selector(rectangleTool)))
-        stack.addArrangedSubview(toolButton("textformat", "Текст", key: "text", #selector(textTool)))
-        stack.addArrangedSubview(toolButton("eye.slash", "Размытие", key: "blur", #selector(blurTool)))
+        // Icon buttons with tooltips: the previous text labels needed far more width
+        // than the bar ever had.
+        stack.addArrangedSubview(toolButton("cursorarrow", "tool.select".localized("Select and move"), key: "select", #selector(selectTool)))
+        stack.addArrangedSubview(toolButton("arrow.up.right", "tool.arrow".localized("Arrow"), key: "arrow", #selector(arrowTool)))
+        stack.addArrangedSubview(toolButton("rectangle", "tool.rectangle".localized("Rectangle"), key: "rectangle", #selector(rectangleTool)))
+        stack.addArrangedSubview(toolButton("textformat", "tool.text".localized("Text"), key: "text", #selector(textTool)))
+        stack.addArrangedSubview(toolButton("eye.slash", "tool.blur".localized("Blur"), key: "blur", #selector(blurTool)))
 
         configureCursorPopup()
         stack.addArrangedSubview(cursorPopup)
@@ -932,22 +953,22 @@ final class EditorToolbarView: NSVisualEffectView {
         colorWell.color = color
         colorWell.target = self
         colorWell.action = #selector(colorWellChanged(_:))
-        colorWell.toolTip = "Цвет — системный Color Picker"
+        colorWell.toolTip = "tool.color.systemPicker".localized("Color — system picker")
         colorWell.widthAnchor.constraint(equalToConstant: 38).isActive = true
         colorWell.heightAnchor.constraint(equalToConstant: 24).isActive = true
         stack.addArrangedSubview(colorWell)
 
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(actionButton("arrow.uturn.backward", "Отменить (⌘Z)", #selector(undoAction)))
-        stack.addArrangedSubview(actionButton("arrow.uturn.forward", "Повторить (⇧⌘Z)", #selector(redoAction)))
-        stack.addArrangedSubview(actionButton("trash", "Удалить выбранное (⌫)", #selector(deleteAction)))
-        stack.addArrangedSubview(actionButton("trash.slash", "Очистить все аннотации", #selector(clearAction)))
-        stack.addArrangedSubview(actionButton("gearshape", "Настройки", #selector(settingsAction)))
+        stack.addArrangedSubview(actionButton("arrow.uturn.backward", "tool.undo".localized("Undo (⌘Z)"), #selector(undoAction)))
+        stack.addArrangedSubview(actionButton("arrow.uturn.forward", "tool.redo".localized("Redo (⇧⌘Z)"), #selector(redoAction)))
+        stack.addArrangedSubview(actionButton("trash", "tool.delete".localized("Delete selected (⌫)"), #selector(deleteAction)))
+        stack.addArrangedSubview(actionButton("trash.slash", "tool.clear".localized("Clear all annotations"), #selector(clearAction)))
+        stack.addArrangedSubview(actionButton("gearshape", "tool.settings".localized("Settings"), #selector(settingsAction)))
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(actionButton("doc.on.doc", "Копировать", #selector(copyAction)))
-        stack.addArrangedSubview(actionButton("square.and.arrow.down", "Сохранить в папку по умолчанию", #selector(saveAction)))
-        stack.addArrangedSubview(actionButton("square.and.arrow.down.on.square", "Сохранить как…", #selector(saveAsAction)))
-        stack.addArrangedSubview(actionButton("xmark", "Отмена (Esc)", #selector(cancelAction)))
+        stack.addArrangedSubview(actionButton("doc.on.doc", "tool.copy".localized("Copy"), #selector(copyAction)))
+        stack.addArrangedSubview(actionButton("square.and.arrow.down", "tool.save.default".localized("Save to the default folder"), #selector(saveAction)))
+        stack.addArrangedSubview(actionButton("square.and.arrow.down.on.square", "tool.saveAs".localized("Save As…"), #selector(saveAsAction)))
+        stack.addArrangedSubview(actionButton("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancelAction)))
 
         updateSelectedTool("select")
     }
@@ -972,15 +993,15 @@ final class EditorToolbarView: NSVisualEffectView {
 
     private func configureCursorPopup() {
         cursorPopup.removeAllItems()
-        cursorPopup.addItem(withTitle: "Курсор")
+        cursorPopup.addItem(withTitle: "cursor.menu".localized("Cursor"))
         for style in CursorStyle.allCases {
-            cursorPopup.addItem(withTitle: style.rawValue)
+            cursorPopup.addItem(withTitle: style.title)
             cursorPopup.lastItem?.representedObject = style
         }
         cursorPopup.target = self
         cursorPopup.action = #selector(cursorChanged(_:))
         cursorPopup.controlSize = .small
-        cursorPopup.toolTip = "Визуальный курсор"
+        cursorPopup.toolTip = "cursor.tooltip".localized("Visual cursor")
         cursorPopup.widthAnchor.constraint(equalToConstant: 130).isActive = true
     }
 
@@ -1218,7 +1239,7 @@ final class EditorPanelController: NSWindowController, NSWindowDelegate {
 
     private func copyResult() {
         guard let data = canvas.renderedData(format: .png) else {
-            showError("Не удалось подготовить изображение для буфера обмена.")
+            showError("error.clipboard.prepare".localized("Could not prepare the image for the clipboard."))
             return
         }
         ScreenshotOutput.copy(data, settings: settings)
@@ -1228,14 +1249,14 @@ final class EditorPanelController: NSWindowController, NSWindowDelegate {
     private func saveResult() {
         let format = settings.outputFormat
         guard let data = canvas.renderedData(format: format) else {
-            showError("Не удалось подготовить изображение для сохранения.")
+            showError("error.save.prepare".localized("Could not prepare the image for saving."))
             return
         }
         do {
             _ = try ScreenshotOutput.save(data, format: format, settings: settings)
             close()
         } catch {
-            showError("Не удалось сохранить файл: \(error.localizedDescription)")
+            showError("error.save.write".localized("Could not save the file: %@", error.localizedDescription))
         }
     }
 
@@ -1246,21 +1267,21 @@ final class EditorPanelController: NSWindowController, NSWindowDelegate {
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }
             guard let data = self.canvas.renderedData(format: format) else {
-                self.showError("Не удалось подготовить изображение для сохранения.")
+                self.showError("error.save.prepare".localized("Could not prepare the image for saving."))
                 return
             }
             do {
                 try ScreenshotOutput.write(data, to: url, settings: self.settings)
                 self.close()
             } catch {
-                self.showError("Не удалось сохранить файл: \(error.localizedDescription)")
+                self.showError("error.save.write".localized("Could not save the file: %@", error.localizedDescription))
             }
         }
     }
 
     private func showError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Ошибка"
+        alert.messageText = "error.title".localized("Error")
         alert.informativeText = message
         alert.runModal()
     }

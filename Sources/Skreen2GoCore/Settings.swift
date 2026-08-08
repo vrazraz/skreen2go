@@ -61,6 +61,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private var hotKeyButton: NSButton!
     private var folderField: NSTextField!
     private var formatPopup: NSPopUpButton!
+    private var languagePopup: NSPopUpButton!
     private var colorWell: NSColorWell!
     private var strokeThicknessSlider: NSSlider!
     private var strokeOpacitySlider: NSSlider!
@@ -84,7 +85,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "Настройки Skreen2Go"
+        window.title = "settings.window.title".localized("Skreen2Go Settings")
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
@@ -157,70 +158,79 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -24)
         ])
 
-        let title = NSTextField(labelWithString: "Общие настройки")
+        let title = NSTextField(labelWithString: "settings.section.general".localized("General"))
         title.font = .boldSystemFont(ofSize: 18)
         stack.addArrangedSubview(title)
 
         hotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording))
         hotKeyButton.bezelStyle = .rounded
         hotKeyButton.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        stack.addArrangedSubview(row(label: "Горячая клавиша", control: hotKeyButton))
+        stack.addArrangedSubview(row(label: "settings.hotKey".localized("Hot key"), control: hotKeyButton))
 
         folderField = NSTextField(string: "")
         folderField.isEditable = false
         folderField.lineBreakMode = .byTruncatingMiddle
         folderField.widthAnchor.constraint(equalToConstant: 260).isActive = true
-        let folderButton = NSButton(title: "Выбрать…", target: self, action: #selector(chooseFolder))
+        let folderButton = NSButton(title: "settings.folder.choose".localized("Choose…"), target: self, action: #selector(chooseFolder))
         folderButton.bezelStyle = .rounded
         let folderRow = NSStackView(views: [folderField, folderButton])
         folderRow.orientation = .horizontal
         folderRow.spacing = 8
-        stack.addArrangedSubview(row(label: "Папка сохранения", control: folderRow))
+        stack.addArrangedSubview(row(label: "settings.folder".localized("Save folder"), control: folderRow))
 
         formatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         formatPopup.addItems(withTitles: OutputFormat.allCases.map(\.rawValue))
         formatPopup.target = self
         formatPopup.action = #selector(formatChanged(_:))
-        stack.addArrangedSubview(row(label: "Формат файла", control: formatPopup))
+        stack.addArrangedSubview(row(label: "settings.format".localized("File format"), control: formatPopup))
+
+        languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        for language in InterfaceLanguage.allCases {
+            languagePopup.addItem(withTitle: language.title)
+            languagePopup.lastItem?.representedObject = language.rawValue
+        }
+        languagePopup.target = self
+        languagePopup.action = #selector(languageChanged(_:))
+        stack.addArrangedSubview(row(label: "settings.language".localized("Language"), control: languagePopup))
 
         colorWell = NSColorWell(frame: .zero)
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
-        stack.addArrangedSubview(row(label: "Цвет по умолчанию", control: colorWell))
+        stack.addArrangedSubview(row(label: "settings.color".localized("Default color"), control: colorWell))
 
-        let strokeTitle = NSTextField(labelWithString: "Стрелка и рамка")
+        let strokeTitle = NSTextField(labelWithString: "settings.section.stroke".localized("Arrow and rectangle"))
         strokeTitle.font = .boldSystemFont(ofSize: 14)
         stack.addArrangedSubview(strokeTitle)
         strokeThicknessSlider = slider(min: 1, max: 16, action: #selector(strokeThicknessChanged(_:)))
-        stack.addArrangedSubview(row(label: "Толщина", control: strokeThicknessSlider))
+        stack.addArrangedSubview(row(label: "settings.thickness".localized("Thickness"), control: strokeThicknessSlider))
         strokeOpacitySlider = slider(min: 0.1, max: 1, action: #selector(strokeOpacityChanged(_:)))
-        stack.addArrangedSubview(row(label: "Прозрачность", control: strokeOpacitySlider))
+        stack.addArrangedSubview(row(label: "settings.opacity".localized("Opacity"), control: strokeOpacitySlider))
 
-        let textTitle = NSTextField(labelWithString: "Текст")
+        let textTitle = NSTextField(labelWithString: "settings.section.text".localized("Text"))
         textTitle.font = .boldSystemFont(ofSize: 14)
         stack.addArrangedSubview(textTitle)
         textSizeSlider = slider(min: 10, max: 72, action: #selector(textSizeChanged(_:)))
-        stack.addArrangedSubview(row(label: "Размер", control: textSizeSlider))
+        stack.addArrangedSubview(row(label: "settings.textSize".localized("Size"), control: textSizeSlider))
         textOpacitySlider = slider(min: 0.1, max: 1, action: #selector(textOpacityChanged(_:)))
-        stack.addArrangedSubview(row(label: "Прозрачность", control: textOpacitySlider))
-        boldCheckbox = NSButton(checkboxWithTitle: "Жирный текст", target: self, action: #selector(textBoldChanged(_:)))
+        stack.addArrangedSubview(row(label: "settings.opacity".localized("Opacity"), control: textOpacitySlider))
+        boldCheckbox = NSButton(checkboxWithTitle: "settings.textBold".localized("Bold text"), target: self, action: #selector(textBoldChanged(_:)))
         stack.addArrangedSubview(boldCheckbox)
 
-        let blurTitle = NSTextField(labelWithString: "Размытие")
+        let blurTitle = NSTextField(labelWithString: "settings.section.blur".localized("Blur"))
         blurTitle.font = .boldSystemFont(ofSize: 14)
         stack.addArrangedSubview(blurTitle)
         blurSlider = slider(min: 1, max: 40, action: #selector(blurChanged(_:)))
-        stack.addArrangedSubview(row(label: "Интенсивность", control: blurSlider))
+        stack.addArrangedSubview(row(label: "settings.blurRadius".localized("Intensity"), control: blurSlider))
 
-        launchCheckbox = NSButton(checkboxWithTitle: "Запускать вместе с macOS", target: self, action: #selector(launchAtLoginChanged(_:)))
+        launchCheckbox = NSButton(checkboxWithTitle: "settings.launchAtLogin".localized("Launch at login"), target: self, action: #selector(launchAtLoginChanged(_:)))
         stack.addArrangedSubview(launchCheckbox)
 
-        notificationCheckbox = NSButton(checkboxWithTitle: "Показывать уведомления", target: self, action: #selector(notificationsChanged(_:)))
+        notificationCheckbox = NSButton(checkboxWithTitle: "settings.showNotifications".localized("Show notifications"), target: self, action: #selector(notificationsChanged(_:)))
         stack.addArrangedSubview(notificationCheckbox)
 
-        let resetButton = NSButton(title: "Сбросить настройки", target: self, action: #selector(resetSettings))
+        let resetButton = NSButton(title: "settings.reset".localized("Reset settings"), target: self, action: #selector(resetSettings))
         resetButton.bezelStyle = .rounded
-        let closeButton = NSButton(title: "Готово", target: self, action: #selector(closeSettings))
+        let closeButton = NSButton(title: "settings.done".localized("Done"), target: self, action: #selector(closeSettings))
         closeButton.bezelStyle = .rounded
         let buttons = NSStackView(views: [resetButton, closeButton])
         buttons.orientation = .horizontal
@@ -241,6 +251,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         )
         folderField.stringValue = settings.outputFolderURL.path
         formatPopup.selectItem(withTitle: settings.outputFormat.rawValue)
+        selectLanguage(settings.interfaceLanguage)
         colorWell.color = settings.defaultColor
         strokeThicknessSlider.doubleValue = Double(settings.strokeThickness)
         strokeOpacitySlider.doubleValue = Double(settings.strokeOpacity)
@@ -281,7 +292,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
 
     private func startRecordingHotKey() {
         recordingHotKey = true
-        hotKeyButton.title = "Нажмите комбинацию… (Esc — отмена)"
+        hotKeyButton.title = "settings.hotKey.recording".localized("Press a combination… (Esc to cancel)")
         hotKeyRecordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.recordingHotKey else { return event }
 
@@ -326,8 +337,12 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         panel.allowsMultipleSelection = false
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, let url = panel.url else { return }
-            self.settings.outputFolderURL = url
-            self.folderField.stringValue = url.path
+            do {
+                try self.settings.setOutputFolderURL(url)
+                self.folderField.stringValue = url.path
+            } catch {
+                ScreenshotOutput.showError("error.folder.bookmark".localized("Could not remember the save folder: %@", error.localizedDescription))
+            }
         }
     }
 
@@ -335,6 +350,32 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         if let format = OutputFormat(rawValue: sender.titleOfSelectedItem ?? "PNG") {
             settings.outputFormat = format
         }
+    }
+
+    private func selectLanguage(_ language: InterfaceLanguage) {
+        let index = languagePopup.itemArray.firstIndex {
+            ($0.representedObject as? String) == language.rawValue
+        }
+        languagePopup.selectItem(at: index ?? 0)
+    }
+
+    @objc private func languageChanged(_ sender: NSPopUpButton) {
+        guard let raw = sender.selectedItem?.representedObject as? String,
+              let language = InterfaceLanguage(rawValue: raw) else { return }
+        settings.interfaceLanguage = language
+        L10n.overrideLanguage = language.bundleCode
+        // Every label was built with the old language, so the window is rebuilt rather
+        // than relabelled control by control.
+        rebuildInterface()
+    }
+
+    /// Tears the window's content down and builds it again in the current language.
+    func rebuildInterface() {
+        stopRecordingHotKey()
+        colorWell?.deactivate()
+        window?.title = "settings.window.title".localized("Skreen2Go Settings")
+        window?.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        buildInterface()
     }
 
     @objc private func colorChanged(_ sender: NSColorWell) { settings.defaultColor = sender.color }
@@ -357,13 +398,11 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             sender.state = enabled ? .off : .on
             settings.launchAtLogin = !enabled ? false : settings.launchAtLogin
             let alert = NSAlert()
-            alert.messageText = "Не удалось изменить автозапуск"
-            alert.informativeText = """
-            \(error.localizedDescription)
-
-            Автозапуск работает только для собранного .app из папки «Программы». \
-            Соберите приложение через Scripts/build-app.sh и запустите его оттуда.
-            """
+            alert.messageText = "error.launchAtLogin.title".localized("Could not change the launch-at-login setting")
+            alert.informativeText = "error.launchAtLogin.body".localized(
+                "%@\n\nLaunching at login only works for a built .app in the Applications folder.",
+                error.localizedDescription
+            )
             alert.runModal()
             sender.state = LaunchAtLogin.isEnabled ? .on : .off
         }
@@ -377,7 +416,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         do {
             try LaunchAtLogin.disableIfEnabled()
         } catch {
-            ScreenshotOutput.showError("Настройки сброшены, но автозапуск отключить не удалось: \(error.localizedDescription)")
+            ScreenshotOutput.showError("error.reset.launchAtLogin".localized("Settings were reset, but launching at login could not be turned off: %@", error.localizedDescription))
         }
         refreshControls()
     }

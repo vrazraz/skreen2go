@@ -144,6 +144,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        L10n.overrideLanguage = settings.interfaceLanguage.bundleCode
         configureStatusItem()
 
         captureController.onImageCaptured = { [weak self] image, selectionFrame, annotations in
@@ -183,26 +184,26 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         guard let button = statusItem.button else { return }
-        let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "Сделать скриншот")
+        let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "menu.capture".localized("Take Screenshot"))
         image?.isTemplate = true
         button.image = image
-        button.toolTip = "Skreen2Go — сделать скриншот"
+        button.toolTip = "menu.statusItem.tooltip".localized("Skreen2Go — take a screenshot")
 
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let captureItem = NSMenuItem(title: "Сделать скриншот", action: #selector(startCapture), keyEquivalent: "")
+        let captureItem = NSMenuItem(title: "menu.capture".localized("Take Screenshot"), action: #selector(startCapture), keyEquivalent: "")
         captureItem.target = self
         menu.addItem(captureItem)
 
-        let settingsItem = NSMenuItem(title: "Настройки…", action: #selector(showSettingsFromMenu), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "menu.settings".localized("Settings…"), action: #selector(showSettingsFromMenu), keyEquivalent: ",")
         settingsItem.keyEquivalentModifierMask = [.command]
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Закрыть", action: #selector(terminate), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "menu.quit".localized("Quit"), action: #selector(terminate), keyEquivalent: "q")
         quitItem.keyEquivalentModifierMask = [.command]
         quitItem.target = self
         menu.addItem(quitItem)
@@ -226,6 +227,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func settingsChanged() {
+        let language = settings.interfaceLanguage.bundleCode
+        if L10n.overrideLanguage != language {
+            L10n.overrideLanguage = language
+            // The menu was built in the previous language.
+            configureStatusItem()
+        }
         guard let hotKeyMonitor else { return }
         let result = hotKeyMonitor.install()
         if result != .unchanged { reportHotKeyRegistration(result) }
@@ -273,15 +280,14 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             modifiers: settings.hotKey.modifiers
         )
         let alert = NSAlert()
-        alert.messageText = "Горячая клавиша не зарегистрирована"
-        alert.informativeText = """
-        Комбинацию \(combination) не удалось назначить (код ошибки \(status)). \
-        Обычно это значит, что её уже занимает macOS или другое приложение.
-        Выберите другую комбинацию в настройках Skreen2Go — снимок экрана \
-        по-прежнему доступен через иконку в menu bar.
-        """
-        alert.addButton(withTitle: "Открыть настройки")
-        alert.addButton(withTitle: "Закрыть")
+        alert.messageText = "error.hotKey.title".localized("Hot key not registered")
+        alert.informativeText = "error.hotKey.body".localized(
+            "The combination %1$@ could not be assigned (error %2$d).",
+            combination,
+            Int(status)
+        )
+        alert.addButton(withTitle: "button.openSettings".localized("Open Settings"))
+        alert.addButton(withTitle: "button.close".localized("Close"))
         if alert.runModal() == .alertFirstButtonReturn {
             presentSettings(modal: false)
         }
@@ -289,10 +295,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showCaptureError(_ message: String) {
         let alert = NSAlert()
-        alert.messageText = "Не удалось создать скриншот"
+        alert.messageText = "error.capture.title".localized("Could not take the screenshot")
         alert.informativeText = message
-        alert.addButton(withTitle: "Открыть настройки macOS")
-        alert.addButton(withTitle: "Закрыть")
+        alert.addButton(withTitle: "button.openSystemSettings".localized("Open macOS Settings"))
+        alert.addButton(withTitle: "button.close".localized("Close"))
         if alert.runModal() == .alertFirstButtonReturn,
            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
             NSWorkspace.shared.open(url)

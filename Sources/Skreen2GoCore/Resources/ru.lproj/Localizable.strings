@@ -1,0 +1,94 @@
+/* Menu bar */
+"menu.capture" = "Сделать скриншот";
+"menu.settings" = "Настройки…";
+"menu.quit" = "Закрыть";
+"menu.statusItem.tooltip" = "Skreen2Go — сделать скриншот";
+
+/* Capture overlay */
+"overlay.hint.idle" = "Клик — окно   •   Перетащите мышью — область   •   Esc — отмена";
+"overlay.hint.live" = "Инструмент — рисовать внутри   •   За края — размер   •   Enter — редактор   •   Esc — отмена";
+
+/* Tools */
+"tool.select" = "Выбор и перемещение";
+"tool.arrow" = "Стрелка";
+"tool.rectangle" = "Рамка";
+"tool.text" = "Текст";
+"tool.blur" = "Размытие";
+"tool.color" = "Цвет";
+"tool.color.systemPicker" = "Цвет — системный Color Picker";
+"tool.undo" = "Отменить (⌘Z)";
+"tool.redo" = "Повторить (⇧⌘Z)";
+"tool.delete" = "Удалить выбранное (⌫)";
+"tool.clear" = "Очистить все аннотации";
+"tool.settings" = "Настройки";
+"tool.copy" = "Копировать";
+"tool.save" = "Сохранить";
+"tool.save.default" = "Сохранить в папку по умолчанию";
+"tool.saveAs" = "Сохранить как…";
+"tool.cancel" = "Отмена (Esc)";
+
+/* Visual cursor */
+"cursor.menu" = "Курсор";
+"cursor.tooltip" = "Визуальный курсор";
+"cursor.arrow" = "Обычная стрелка";
+"cursor.pointer" = "Указательный палец";
+"cursor.hand" = "Рука";
+"cursor.text" = "Текстовый курсор";
+"cursor.resize" = "Изменение размера";
+"cursor.click" = "Индикатор клика";
+
+/* Confirmations */
+"outcome.copied.title" = "Успешно скопировано";
+"outcome.copied.detail" = "Изображение в буфере обмена";
+"outcome.saved.title" = "Успешно сохранено";
+
+/* Settings window */
+"settings.window.title" = "Настройки Skreen2Go";
+"settings.section.general" = "Общие настройки";
+"settings.hotKey" = "Горячая клавиша";
+"settings.hotKey.recording" = "Нажмите комбинацию… (Esc — отмена)";
+"settings.folder" = "Папка сохранения";
+"settings.folder.choose" = "Выбрать…";
+"settings.format" = "Формат файла";
+"settings.language" = "Язык интерфейса";
+"settings.language.system" = "Системный";
+"settings.color" = "Цвет по умолчанию";
+"settings.section.stroke" = "Стрелка и рамка";
+"settings.thickness" = "Толщина";
+"settings.opacity" = "Прозрачность";
+"settings.section.text" = "Текст";
+"settings.textSize" = "Размер";
+"settings.textBold" = "Жирный текст";
+"settings.section.blur" = "Размытие";
+"settings.blurRadius" = "Интенсивность";
+"settings.launchAtLogin" = "Запускать вместе с macOS";
+"settings.showNotifications" = "Показывать уведомления";
+"settings.reset" = "Сбросить настройки";
+"settings.done" = "Готово";
+
+/* Save panel */
+"savePanel.title" = "Сохранить скриншот";
+
+/* Errors */
+"error.title" = "Ошибка";
+"error.capture.title" = "Не удалось создать скриншот";
+"error.capture.permissionDenied" = "Нет доступа к записи экрана. Откройте «Системные настройки → Конфиденциальность и безопасность → Запись экрана» и включите Skreen2Go, затем перезапустите приложение.";
+"error.capture.windowUnavailable" = "Окно исчезло до того, как удалось сделать снимок.";
+"error.capture.displayUnavailable" = "Не удалось определить дисплей для выбранной области.";
+"error.capture.renderFailed" = "Не удалось собрать изображение из захваченных данных.";
+"error.capture.underlying" = "Не удалось сделать снимок: %@";
+"error.clipboard.prepare" = "Не удалось подготовить изображение для буфера обмена.";
+"error.save.prepare" = "Не удалось подготовить изображение для сохранения.";
+"error.save.write" = "Не удалось сохранить файл: %@";
+"error.folder.bookmark" = "Не удалось запомнить папку сохранения: %@";
+"error.folder.access" = "Нет постоянного доступа к выбранной папке. Выберите папку сохранения заново в настройках.";
+"error.launchAtLogin.title" = "Не удалось изменить автозапуск";
+"error.launchAtLogin.body" = "%@\n\nАвтозапуск работает только для собранного .app из папки «Программы». Соберите приложение через Scripts/build-app.sh и запустите его оттуда.";
+"error.reset.launchAtLogin" = "Настройки сброшены, но автозапуск отключить не удалось: %@";
+"error.hotKey.title" = "Горячая клавиша не зарегистрирована";
+"error.hotKey.body" = "Комбинацию %1$@ не удалось назначить (код ошибки %2$d). Обычно это значит, что её уже занимает macOS или другое приложение.\nВыберите другую комбинацию в настройках Skreen2Go — снимок экрана по-прежнему доступен через иконку в menu bar.";
+
+/* Buttons */
+"button.openSettings" = "Открыть настройки";
+"button.openSystemSettings" = "Открыть настройки macOS";
+"button.close" = "Закрыть";

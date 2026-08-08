@@ -7,20 +7,35 @@
 ## Требования
 
 - macOS 14+
-- Swift 6.1 (Command Line Tools или Xcode)
+- Swift 6.1 (манифест SwiftPM использует формат 5.9; достаточно Command Line Tools для локальной сборки)
 
 ## Сборка и запуск
 
 ```sh
 swift build            # сборка
 swift test             # тесты
-./Scripts/build-app.sh # собрать dist/Skreen2Go.app
+./Scripts/build-app.sh # собрать dist/Skreen2Go.app для локального тестирования
 open dist/Skreen2Go.app
 ```
 
 При первом запуске macOS запросит доступ к **записи экрана**. Без него захват работать не будет — приложение покажет объяснение и кнопку в системные настройки.
 
 > Скрипт подписывает бандл ad-hoc, поэтому после каждой пересборки разрешение на запись экрана может потребоваться выдать заново. Постоянная подпись это снимает.
+
+## Подготовка к Mac App Store
+
+Приложение уже содержит App Sandbox entitlements, privacy manifest и поддержку security-scoped bookmark для выбранной папки сохранения. Локальный скрипт по умолчанию использует ad-hoc подпись. Для App Store нужен Apple Developer Program, явный App ID `com.skreen2go.app`, distribution certificate и профиль **Mac App Store Connect**:
+
+```sh
+APP_STORE=1 \
+SIGNING_IDENTITY="Mac App Distribution: Your Name (TEAMID)" \
+PROVISIONING_PROFILE="$HOME/Downloads/Skreen2Go.provisionprofile" \
+APP_VERSION="0.1.0" \
+APP_BUILD="1" \
+./Scripts/build-app.sh
+```
+
+Затем подписанный bundle нужно проверить и загрузить через Xcode Organizer или Transporter. До загрузки также нужны финальная иконка приложения (`.icns`/AppIcon), заполненные App Store Connect privacy labels, описание, скриншоты, support URL и корректные данные продавца. Не загружайте `dist/` и `.build/` в репозиторий — они исключены через `.gitignore`.
 
 ## Как пользоваться
 

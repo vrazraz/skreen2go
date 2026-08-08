@@ -393,12 +393,27 @@ struct RegressionTests {
         #expect(body.contains("LaunchAtLogin.disableIfEnabled"), "reset leaves the login item registered")
     }
 
+    @Test("The selected output folder survives through a security-scoped bookmark")
+    func outputFolderBookmarkPersists() throws {
+        let settings = makeSettings()
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Skreen2GoTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        try settings.setOutputFolderURL(folder)
+        #expect(settings.outputFolderURL.standardizedFileURL == folder.standardizedFileURL)
+
+        let accessedURL = try settings.withOutputFolderAccess { $0.standardizedFileURL }
+        #expect(accessedURL == folder.standardizedFileURL)
+    }
+
     // MARK: - Action confirmations
 
     @Test("Copying reports that it succeeded")
     func copyOutcomeWording() {
         let outcome = ScreenshotOutcome.copied
-        #expect(outcome.title == "Успешно скопировано")
+        #expect(outcome.title == "outcome.copied.title".localized("Copied"))
         #expect(outcome.toastDetail.isEmpty == false)
         #expect(outcome.symbolName.isEmpty == false)
     }
@@ -408,7 +423,7 @@ struct RegressionTests {
         let url = URL(fileURLWithPath: "/Users/someone/Downloads/Screenshot 2026-08-08 at 12.00.00.png")
         let outcome = ScreenshotOutcome.saved(url)
 
-        #expect(outcome.title == "Успешно сохранено")
+        #expect(outcome.title == "outcome.saved.title".localized("Saved"))
         #expect(outcome.toastDetail == "Screenshot 2026-08-08 at 12.00.00.png")
     }
 
@@ -637,6 +652,146 @@ struct RegressionTests {
         #expect(OverlayTool.none.annotationKind == nil)
     }
 
+    // MARK: - Localization
+
+    private func sourcesDirectory() -> String {
+        #filePath.replacingOccurrences(
+            of: "/Tests/Skreen2GoCoreTests/RegressionTests.swift",
+            with: "/Sources/Skreen2GoCore"
+        )
+    }
+
+    /// Keys defined in one of the `.strings` tables.
+    private func stringsKeys(_ language: String) throws -> Set<String> {
+        let path = sourcesDirectory() + "/Resources/\(language).lproj/Localizable.strings"
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        var keys: Set<String> = []
+        for line in text.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("\""), let end = trimmed.dropFirst().firstIndex(of: "\"") else { continue }
+            keys.insert(String(trimmed[trimmed.index(after: trimmed.startIndex)..<end]))
+        }
+        return keys
+    }
+
+    @Test("Both languages define exactly the same keys")
+    func translationsAreComplete() throws {
+        let english = try stringsKeys("en")
+        let russian = try stringsKeys("ru")
+
+        #expect(english.isEmpty == false)
+        #expect(english.subtracting(russian).isEmpty, "missing in ru: \(english.subtracting(russian).sorted())")
+        #expect(russian.subtracting(english).isEmpty, "missing in en: \(russian.subtracting(english).sorted())")
+    }
+
+    @Test("Every key used in code exists in both tables")
+    func everyUsedKeyIsTranslated() throws {
+        let english = try stringsKeys("en")
+        let russian = try stringsKeys("ru")
+        let files = try FileManager.default.contentsOfDirectory(atPath: sourcesDirectory())
+            .filter { $0.hasSuffix(".swift") }
+
+        var used: Set<String> = []
+        for file in files {
+            let text = try String(contentsOfFile: sourcesDirectory() + "/" + file, encoding: .utf8)
+            // Matches `"some.key".localized(`
+            var search = text[...]
+            while let marker = search.range(of: "\".localized(") {
+                let head = search[..<marker.lowerBound]
+                if let openQuote = head.lastIndex(of: "\"") {
+                    used.insert(String(head[head.index(after: openQuote)...]))
+                }
+                search = search[marker.upperBound...]
+            }
+        }
+
+        #expect(used.count > 40, "only found \(used.count) keys — did the scan break?")
+        #expect(used.subtracting(english).isEmpty, "not in en: \(used.subtracting(english).sorted())")
+        #expect(used.subtracting(russian).isEmpty, "not in ru: \(used.subtracting(russian).sorted())")
+    }
+
+    @Test("No user-facing text is left hardcoded in the sources")
+    func noHardcodedRussianRemains() throws {
+        let files = try FileManager.default.contentsOfDirectory(atPath: sourcesDirectory())
+            .filter { $0.hasSuffix(".swift") }
+        let cyrillic = CharacterSet(charactersIn: "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ")
+
+        for file in files {
+            let text = try String(contentsOfFile: sourcesDirectory() + "/" + file, encoding: .utf8)
+            let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+            for (number, line) in lines.enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                // Language names are written in their own language on purpose.
+                let isEndonym = lines[max(0, number - 1)].contains("Endonym")
+                let code = (trimmed.hasPrefix("//") || isEndonym) ? "" : String(line)
+                guard let quote = code.firstIndex(of: "\"") else { continue }
+                let literals = String(code[quote...])
+                #expect(
+                    literals.rangeOfCharacter(from: cyrillic) == nil,
+                    "\(file):\(number + 1) still carries literal text: \(line.trimmingCharacters(in: .whitespaces))"
+                )
+            }
+        }
+    }
+
+    @Test("The localization bundle is found and resolves a key")
+    func localizationBundleResolves() {
+        // A missing bundle must degrade to the fallback rather than trapping.
+        #expect("tool.arrow".localized("Arrow").isEmpty == false)
+        #expect("definitely.not.a.key".localized("Fallback text") == "Fallback text")
+    }
+
+    @Test("Forcing a language changes what strings resolve to")
+    func languageOverrideSwitchesStrings() {
+        let previous = L10n.overrideLanguage
+        defer { L10n.overrideLanguage = previous }
+
+        L10n.overrideLanguage = "en"
+        let english = "tool.arrow".localized("Arrow")
+        L10n.overrideLanguage = "ru"
+        let russian = "tool.arrow".localized("Arrow")
+
+        #expect(english == "Arrow")
+        #expect(russian == "Стрелка")
+        #expect(english != russian, "the override had no effect")
+    }
+
+    @Test("An unknown forced language falls back rather than blanking the UI")
+    func unknownLanguageFallsBack() {
+        let previous = L10n.overrideLanguage
+        defer { L10n.overrideLanguage = previous }
+
+        L10n.overrideLanguage = "xx"
+        #expect("tool.arrow".localized("Arrow").isEmpty == false)
+    }
+
+    @Test("The language setting persists and resets with the rest")
+    func languageSettingRoundTrips() {
+        let settings = makeSettings()
+        #expect(settings.interfaceLanguage == .system)
+        #expect(settings.interfaceLanguage.bundleCode == nil)
+
+        settings.interfaceLanguage = .russian
+        #expect(settings.interfaceLanguage == .russian)
+        #expect(settings.interfaceLanguage.bundleCode == "ru")
+
+        settings.reset()
+        #expect(settings.interfaceLanguage == .system)
+    }
+
+    @Test("Every language offered in Settings has a bundled translation")
+    func offeredLanguagesAreTranslated() throws {
+        let available = try FileManager.default
+            .contentsOfDirectory(atPath: sourcesDirectory() + "/Resources")
+            .filter { $0.hasSuffix(".lproj") }
+            .map { $0.replacingOccurrences(of: ".lproj", with: "") }
+
+        for language in InterfaceLanguage.allCases {
+            guard let code = language.bundleCode else { continue }
+            #expect(available.contains(code), "\(code) is offered but has no .lproj")
+        }
+    }
+
     // MARK: - Settings from the action panel
 
     @Test("The settings button neither captures nor drops the frame")
@@ -815,9 +970,9 @@ struct RegressionTests {
         // Eleven controls: three tools, colour, undo, redo, settings, copy, save,
         // save-as, cancel.
         #expect(hints.count == 11, "found hints: \(hints.sorted())")
-        #expect(hints.contains("Стрелка"))
-        #expect(hints.contains("Цвет"))
-        #expect(hints.contains("Настройки"))
+        #expect(hints.contains("tool.arrow".localized("Arrow")))
+        #expect(hints.contains("tool.color".localized("Color")))
+        #expect(hints.contains("tool.settings".localized("Settings")))
     }
 
     @Test("Hovering a control makes its hint the active one")
@@ -832,7 +987,7 @@ struct RegressionTests {
 
         // First control from the left is the arrow tool.
         overlay.testForceHint(at: CGPoint(x: bar.minX + 22, y: bar.midY))
-        #expect(overlay.testActiveHint == "Стрелка")
+        #expect(overlay.testActiveHint == "tool.arrow".localized("Arrow"))
     }
 
     @Test("The panel background offers no hint")
@@ -1550,6 +1705,34 @@ struct RegressionTests {
         #expect(name.hasPrefix("Screenshot 2026-08-06 at "), "got \(name)")
         #expect(name.hasSuffix(".png"))
         #expect(ScreenshotNaming.fileExtension(for: .jpeg) == "jpg")
+    }
+
+    @Test("Automatic saving does not reuse an existing filename")
+    func automaticFilenameIsUnique() throws {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Skreen2GoTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 8
+        components.day = 6
+        components.hour = 14
+        components.minute = 30
+        components.second = 25
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let date = try #require(calendar.date(from: components))
+
+        let first = ScreenshotNaming.uniqueURL(in: folder, format: .png, date: date)
+        try Data().write(to: first)
+        let second = ScreenshotNaming.uniqueURL(in: folder, format: .png, date: date)
+
+        let originalName = ScreenshotNaming.fileName(for: .png, date: date)
+        let baseName = originalName.replacingOccurrences(of: ".png", with: "")
+        #expect(first.lastPathComponent == originalName)
+        #expect(second.lastPathComponent == "\(baseName) 2.png")
     }
 
     // MARK: - Settings store

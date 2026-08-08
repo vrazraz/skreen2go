@@ -8,8 +8,8 @@ enum ScreenshotOutcome: Equatable {
 
     var title: String {
         switch self {
-        case .copied: return "Успешно скопировано"
-        case .saved: return "Успешно сохранено"
+        case .copied: return "outcome.copied.title".localized("Copied")
+        case .saved: return "outcome.saved.title".localized("Saved")
         }
     }
 
@@ -17,7 +17,7 @@ enum ScreenshotOutcome: Equatable {
     /// full path and the name is what the user needs to find the file.
     var toastDetail: String {
         switch self {
-        case .copied: return "Изображение в буфере обмена"
+        case .copied: return "outcome.copied.detail".localized("The image is on the clipboard")
         case .saved(let url): return url.lastPathComponent
         }
     }

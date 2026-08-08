@@ -10,13 +10,57 @@ enum OutputFormat: String, CaseIterable {
     case jpeg = "JPEG"
 }
 
+enum OutputFolderAccessError: LocalizedError {
+    case unavailable
+
+    var errorDescription: String? {
+        "error.folder.access".localized(
+            "No lasting access to the chosen folder. Pick the save folder again in Settings."
+        )
+    }
+}
+
+/// UI language. `system` follows macOS; the others override it inside the app only.
+enum InterfaceLanguage: String, CaseIterable {
+    case system
+    case english = "en"
+    case russian = "ru"
+
+    /// The `.lproj` to force, or nil to let the system decide.
+    var bundleCode: String? {
+        self == .system ? nil : rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .system: return "settings.language.system".localized("System")
+        // Endonym: a language is named in itself, the same in every localization.
+        case .english: return "English"
+        // Endonym.
+        case .russian: return "Русский"
+        }
+    }
+}
+
 enum CursorStyle: String, CaseIterable {
-    case arrow = "Обычная стрелка"
-    case pointer = "Указательный палец"
-    case hand = "Рука"
-    case text = "Текстовый курсор"
-    case resize = "Изменение размера"
-    case click = "Индикатор клика"
+    case arrow
+    case pointer
+    case hand
+    case text
+    case resize
+    case click
+
+    /// Shown in the cursor menu. Kept apart from `rawValue`, which is a stable identifier.
+    var title: String {
+        switch self {
+        case .arrow: return "cursor.arrow".localized("Arrow")
+        case .pointer: return "cursor.pointer".localized("Pointing finger")
+        case .hand: return "cursor.hand".localized("Open hand")
+        case .text: return "cursor.text".localized("Text cursor")
+        case .resize: return "cursor.resize".localized("Resize")
+        case .click: return "cursor.click".localized("Click indicator")
+        }
+    }
 }
 
 enum AnnotationTool {
@@ -172,13 +216,49 @@ final class SettingsStore {
 
     var outputFolderURL: URL {
         get {
+            if let bookmarkData = defaults.data(forKey: Key.outputFolderBookmark),
+               let bookmarkedURL = Self.resolveBookmark(bookmarkData, defaults: defaults) {
+                return bookmarkedURL
+            }
             if let path = defaults.string(forKey: Key.outputFolderPath) {
                 return URL(fileURLWithPath: path, isDirectory: true)
             }
             return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
                 ?? FileManager.default.homeDirectoryForCurrentUser
         }
-        set { defaults.set(newValue.path, forKey: Key.outputFolderPath); notify() }
+    }
+
+    /// Stores both the display path and a security-scoped bookmark. A path alone is not
+    /// enough for a sandboxed app to regain access after it is relaunched.
+    func setOutputFolderURL(_ url: URL) throws {
+        let bookmarkData = try url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+        defaults.set(url.path, forKey: Key.outputFolderPath)
+        defaults.set(bookmarkData, forKey: Key.outputFolderBookmark)
+        notify()
+    }
+
+    /// Runs file-system work while the selected folder's sandbox extension is active.
+    /// The default Downloads folder is covered by the app's downloads entitlement and does
+    /// not need a bookmark.
+    func withOutputFolderAccess<T>(_ body: (URL) throws -> T) throws -> T {
+        let folder = outputFolderURL
+        let needsSecurityScope = defaults.data(forKey: Key.outputFolderBookmark) != nil
+        let didStartAccess = needsSecurityScope && folder.startAccessingSecurityScopedResource()
+
+        guard !needsSecurityScope || didStartAccess else {
+            throw OutputFolderAccessError.unavailable
+        }
+
+        defer {
+            if didStartAccess {
+                folder.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try body(folder)
     }
 
     var defaultColor: NSColor {
@@ -234,6 +314,13 @@ final class SettingsStore {
         set { defaults.set(Double(newValue), forKey: Key.blurRadius); notify() }
     }
 
+    var interfaceLanguage: InterfaceLanguage {
+        get {
+            InterfaceLanguage(rawValue: defaults.string(forKey: Key.interfaceLanguage) ?? "") ?? .system
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.interfaceLanguage); notify() }
+    }
+
     var showNotifications: Bool {
         get { defaults.object(forKey: Key.showNotifications) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.showNotifications); notify() }
@@ -249,6 +336,27 @@ final class SettingsStore {
         notify()
     }
 
+    private static func resolveBookmark(_ data: Data, defaults: UserDefaults) -> URL? {
+        var isStale = false
+        guard let url = try? URL(
+            resolvingBookmarkData: data,
+            options: [.withSecurityScope, .withoutUI],
+            relativeTo: nil,
+            bookmarkDataIsStale: &isStale
+        ) else {
+            return nil
+        }
+
+        if isStale, let refreshed = try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ) {
+            defaults.set(refreshed, forKey: Key.outputFolderBookmark)
+        }
+        return url
+    }
+
     private func notify() {
         NotificationCenter.default.post(name: .skreenSettingsDidChange, object: self)
     }
@@ -258,6 +366,7 @@ final class SettingsStore {
         static let hotKeyModifiers = "hotKeyModifiers"
         static let outputFormat = "outputFormat"
         static let outputFolderPath = "outputFolderPath"
+        static let outputFolderBookmark = "outputFolderBookmark"
         static let colorRed = "colorRed"
         static let colorGreen = "colorGreen"
         static let colorBlue = "colorBlue"
@@ -268,14 +377,15 @@ final class SettingsStore {
         static let textOpacity = "textOpacity"
         static let textBold = "textBold"
         static let blurRadius = "blurRadius"
+        static let interfaceLanguage = "interfaceLanguage"
         static let showNotifications = "showNotifications"
         static let launchAtLogin = "launchAtLogin"
 
         static let all = [
-            hotKeyKeyCode, hotKeyModifiers, outputFormat, outputFolderPath,
+            hotKeyKeyCode, hotKeyModifiers, outputFormat, outputFolderPath, outputFolderBookmark,
             colorRed, colorGreen, colorBlue, colorAlpha, strokeThickness,
             strokeOpacity, textSize, textOpacity, textBold, blurRadius,
-            showNotifications, launchAtLogin
+            showNotifications, launchAtLogin, interfaceLanguage
         ]
     }
 }

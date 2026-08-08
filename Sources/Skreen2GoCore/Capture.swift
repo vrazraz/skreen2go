@@ -20,15 +20,15 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Нет доступа к записи экрана. Откройте «Системные настройки → Конфиденциальность и безопасность → Запись экрана» и включите Skreen2Go, затем перезапустите приложение."
+            return "error.capture.permissionDenied".localized("No screen recording access. Enable Skreen2Go in System Settings → Privacy & Security → Screen Recording, then restart the app.")
         case .windowUnavailable:
-            return "Окно исчезло до того, как удалось сделать снимок."
+            return "error.capture.windowUnavailable".localized("The window disappeared before the screenshot could be taken.")
         case .displayUnavailable:
-            return "Не удалось определить дисплей для выбранной области."
+            return "error.capture.displayUnavailable".localized("Could not work out which display the selected region is on.")
         case .renderFailed:
-            return "Не удалось собрать изображение из захваченных данных."
+            return "error.capture.renderFailed".localized("Could not assemble an image from the captured data.")
         case .underlying(let error):
-            return "Не удалось сделать снимок: \(error.localizedDescription)"
+            return "error.capture.underlying".localized("Could not take the screenshot: %@", error.localizedDescription)
         }
     }
 }
@@ -587,9 +587,9 @@ final class SelectionActionBar: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
 
-        stack.addArrangedSubview(toolButton("arrow.up.right", "Стрелка", tool: .arrow, #selector(arrowTool)))
-        stack.addArrangedSubview(toolButton("rectangle", "Рамка", tool: .rectangle, #selector(rectangleTool)))
-        stack.addArrangedSubview(toolButton("textformat", "Текст", tool: .text, #selector(textTool)))
+        stack.addArrangedSubview(toolButton("arrow.up.right", "tool.arrow".localized("Arrow"), tool: .arrow, #selector(arrowTool)))
+        stack.addArrangedSubview(toolButton("rectangle", "tool.rectangle".localized("Rectangle"), tool: .rectangle, #selector(rectangleTool)))
+        stack.addArrangedSubview(toolButton("textformat", "tool.text".localized("Text"), tool: .text, #selector(textTool)))
 
         colorButton.target = self
         colorButton.action = #selector(colorTapped)
@@ -599,21 +599,21 @@ final class SelectionActionBar: NSView {
         colorButton.layer?.cornerRadius = 4
         colorButton.layer?.borderWidth = 1
         colorButton.layer?.borderColor = NSColor.black.withAlphaComponent(0.35).cgColor
-        colorButton.setAccessibilityTitle("Цвет")
-        hintTitles[ObjectIdentifier(colorButton)] = "Цвет"
+        colorButton.setAccessibilityTitle("tool.color".localized("Color"))
+        hintTitles[ObjectIdentifier(colorButton)] = "tool.color".localized("Color")
         colorButton.widthAnchor.constraint(equalToConstant: 34).isActive = true
         colorButton.heightAnchor.constraint(equalToConstant: 22).isActive = true
         stack.addArrangedSubview(colorButton)
         setColor(color)
 
-        stack.addArrangedSubview(button("arrow.uturn.backward", "Отменить (⌘Z)", #selector(undo)))
-        stack.addArrangedSubview(button("arrow.uturn.forward", "Повторить (⇧⌘Z)", #selector(redo)))
-        stack.addArrangedSubview(button("gearshape", "Настройки", #selector(settings)))
+        stack.addArrangedSubview(button("arrow.uturn.backward", "tool.undo".localized("Undo (⌘Z)"), #selector(undo)))
+        stack.addArrangedSubview(button("arrow.uturn.forward", "tool.redo".localized("Redo (⇧⌘Z)"), #selector(redo)))
+        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(settings)))
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("doc.on.doc", "Копировать", #selector(copyShot)))
-        stack.addArrangedSubview(button("square.and.arrow.down", "Сохранить", #selector(save)))
-        stack.addArrangedSubview(button("square.and.arrow.down.on.square", "Сохранить как…", #selector(saveAs)))
-        stack.addArrangedSubview(button("xmark", "Отмена (Esc)", #selector(cancel)))
+        stack.addArrangedSubview(button("doc.on.doc", "tool.copy".localized("Copy"), #selector(copyShot)))
+        stack.addArrangedSubview(button("square.and.arrow.down", "tool.save".localized("Save"), #selector(save)))
+        stack.addArrangedSubview(button("square.and.arrow.down.on.square", "tool.saveAs".localized("Save As…"), #selector(saveAs)))
+        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
 
         setActiveTool(.none)
     }
@@ -1538,8 +1538,8 @@ final class CaptureOverlayView: NSView {
 
     private func drawHint(forLiveSelection isLive: Bool) {
         let message = isLive
-            ? "Инструмент — рисовать внутри   •   За края — размер   •   Enter — редактор   •   Esc — отмена"
-            : "Клик — окно   •   Перетащите мышью — область   •   Esc — отмена"
+            ? "overlay.hint.live".localized("Tool — draw inside   •   Edges — resize   •   Enter — editor   •   Esc — cancel")
+            : "overlay.hint.idle".localized("Click — window   •   Drag — region   •   Esc — cancel")
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 15, weight: .medium),
             .foregroundColor: NSColor.white
@@ -1889,7 +1889,7 @@ final class CaptureController {
 
     private func copy(_ image: NSImage, annotations: [Annotation]) {
         guard let data = ScreenshotOutput.data(for: image, annotations: annotations, format: .png, settings: settings) else {
-            ScreenshotOutput.showError("Не удалось подготовить изображение для буфера обмена.")
+            ScreenshotOutput.showError("error.clipboard.prepare".localized("Could not prepare the image for the clipboard."))
             return
         }
         ScreenshotOutput.copy(data, settings: settings)
@@ -1898,20 +1898,20 @@ final class CaptureController {
     private func save(_ image: NSImage, annotations: [Annotation]) {
         let format = settings.outputFormat
         guard let data = ScreenshotOutput.data(for: image, annotations: annotations, format: format, settings: settings) else {
-            ScreenshotOutput.showError("Не удалось подготовить изображение для сохранения.")
+            ScreenshotOutput.showError("error.save.prepare".localized("Could not prepare the image for saving."))
             return
         }
         do {
             _ = try ScreenshotOutput.save(data, format: format, settings: settings)
         } catch {
-            ScreenshotOutput.showError("Не удалось сохранить файл: \(error.localizedDescription)")
+            ScreenshotOutput.showError("error.save.write".localized("Could not save the file: %@", error.localizedDescription))
         }
     }
 
     private func saveAs(_ image: NSImage, annotations: [Annotation]) {
         let format = settings.outputFormat
         guard let data = ScreenshotOutput.data(for: image, annotations: annotations, format: format, settings: settings) else {
-            ScreenshotOutput.showError("Не удалось подготовить изображение для сохранения.")
+            ScreenshotOutput.showError("error.save.prepare".localized("Could not prepare the image for saving."))
             return
         }
         // The overlay is already gone, so there is no window to host a sheet.
@@ -1920,7 +1920,7 @@ final class CaptureController {
         do {
             try ScreenshotOutput.write(data, to: url, settings: settings)
         } catch {
-            ScreenshotOutput.showError("Не удалось сохранить файл: \(error.localizedDescription)")
+            ScreenshotOutput.showError("error.save.write".localized("Could not save the file: %@", error.localizedDescription))
         }
     }
 
