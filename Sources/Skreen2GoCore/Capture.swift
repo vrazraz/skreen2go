@@ -413,16 +413,130 @@ enum FloatingBarPlacement {
     }
 }
 
+/// Colour swatches shown right under the panel's colour button.
+///
+/// Not `NSColorWell`/`NSColorPanel`: the system picker opens a window at an ordinary
+/// level, which the `.screenSaver`-level overlay covers — it was there, just unreachable
+/// behind the dimming. Living as a subview of the overlay keeps it visible and clickable.
+final class ColorPaletteView: NSView {
+    static let colors: [NSColor] = [
+        .systemRed, .systemOrange, .systemYellow, .systemGreen, .systemTeal,
+        .systemBlue, .systemPurple, .systemPink, .white, .black
+    ]
+
+    private static let swatchSide: CGFloat = 22
+    private static let spacing: CGFloat = 6
+    private static let padding: CGFloat = 8
+    private static let columns = 5
+
+    private let onPick: (NSColor) -> Void
+    private var swatches: [(button: NSButton, color: NSColor)] = []
+
+    init(selected: NSColor, onPick: @escaping (NSColor) -> Void) {
+        self.onPick = onPick
+        super.init(frame: .zero)
+
+        appearance = NSAppearance(named: .aqua)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0.97, alpha: 0.98).cgColor
+        layer?.cornerRadius = 8
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor(white: 0.55, alpha: 0.9).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.4
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
+        layer?.shadowRadius = 6
+
+        let rows = stride(from: 0, to: Self.colors.count, by: Self.columns).map { start in
+            let slice = Self.colors[start..<min(start + Self.columns, Self.colors.count)]
+            let row = NSStackView(views: slice.map { swatch($0) })
+            row.orientation = .horizontal
+            row.spacing = Self.spacing
+            return row
+        }
+
+        let grid = NSStackView(views: rows)
+        grid.orientation = .vertical
+        grid.spacing = Self.spacing
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.padding),
+            grid.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
+            grid.topAnchor.constraint(equalTo: topAnchor, constant: Self.padding),
+            grid.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding)
+        ])
+
+        setSelected(selected)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    var preferredSize: CGSize {
+        let rows = CGFloat((Self.colors.count + Self.columns - 1) / Self.columns)
+        let columns = CGFloat(min(Self.columns, Self.colors.count))
+        return CGSize(
+            width: columns * Self.swatchSide + (columns - 1) * Self.spacing + Self.padding * 2,
+            height: rows * Self.swatchSide + (rows - 1) * Self.spacing + Self.padding * 2
+        )
+    }
+
+    func setSelected(_ color: NSColor) {
+        for entry in swatches {
+            let chosen = ColorPaletteView.sameColor(entry.color, color)
+            entry.button.layer?.borderWidth = chosen ? 3 : 1
+            entry.button.layer?.borderColor = chosen
+                ? NSColor.controlAccentColor.cgColor
+                : NSColor.black.withAlphaComponent(0.25).cgColor
+        }
+    }
+
+    /// True when a point in this view's superview coordinates lands on a swatch.
+    func isOverSwatch(_ pointInSuperview: CGPoint) -> Bool {
+        hitTest(pointInSuperview) is NSButton
+    }
+
+    static func sameColor(_ lhs: NSColor, _ rhs: NSColor) -> Bool {
+        guard let a = lhs.usingColorSpace(.deviceRGB), let b = rhs.usingColorSpace(.deviceRGB) else {
+            return false
+        }
+        let tolerance: CGFloat = 0.01
+        return abs(a.redComponent - b.redComponent) < tolerance
+            && abs(a.greenComponent - b.greenComponent) < tolerance
+            && abs(a.blueComponent - b.blueComponent) < tolerance
+    }
+
+    private func swatch(_ color: NSColor) -> NSButton {
+        let button = NSButton(title: "", target: self, action: #selector(pick(_:)))
+        button.isBordered = false
+        button.setButtonType(.momentaryChange)
+        button.wantsLayer = true
+        button.layer?.backgroundColor = color.cgColor
+        button.layer?.cornerRadius = 4
+        button.setAccessibilityTitle(color.accessibilityName)
+        button.widthAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
+        swatches.append((button, color))
+        return button
+    }
+
+    @objc private func pick(_ sender: NSButton) {
+        guard let color = swatches.first(where: { $0.button === sender })?.color else { return }
+        setSelected(color)
+        onPick(color)
+    }
+}
+
 /// The panel that appears as soon as a selection exists (PRD §5). Icon-only: drawing
 /// tools on the left, then colour, undo/redo, and the terminal actions.
 final class SelectionActionBar: NSView {
     private let onTool: (OverlayTool) -> Void
-    private let onColor: (NSColor) -> Void
+    private let onColorRequest: () -> Void
     private let onUndo: () -> Void
     private let onRedo: () -> Void
     private let onAction: (SelectionAction) -> Void
 
-    private let colorWell = NSColorWell(frame: .zero)
+    private let colorButton = NSButton(title: "", target: nil, action: nil)
     private var toolButtons: [(button: NSButton, tool: OverlayTool)] = []
     /// Hint text per control. Native tooltips are useless here: they open in a window at
     /// an ordinary level, which the `.screenSaver`-level overlay covers, so the overlay
@@ -432,13 +546,13 @@ final class SelectionActionBar: NSView {
     init(
         color: NSColor,
         onTool: @escaping (OverlayTool) -> Void,
-        onColor: @escaping (NSColor) -> Void,
+        onColorRequest: @escaping () -> Void,
         onUndo: @escaping () -> Void,
         onRedo: @escaping () -> Void,
         onAction: @escaping (SelectionAction) -> Void
     ) {
         self.onTool = onTool
-        self.onColor = onColor
+        self.onColorRequest = onColorRequest
         self.onUndo = onUndo
         self.onRedo = onRedo
         self.onAction = onAction
@@ -476,13 +590,20 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(toolButton("rectangle", "Рамка", tool: .rectangle, #selector(rectangleTool)))
         stack.addArrangedSubview(toolButton("textformat", "Текст", tool: .text, #selector(textTool)))
 
-        colorWell.color = color
-        colorWell.target = self
-        colorWell.action = #selector(colorChanged(_:))
-        hintTitles[ObjectIdentifier(colorWell)] = "Цвет"
-        colorWell.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        colorWell.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        stack.addArrangedSubview(colorWell)
+        colorButton.target = self
+        colorButton.action = #selector(colorTapped)
+        colorButton.isBordered = false
+        colorButton.setButtonType(.momentaryChange)
+        colorButton.wantsLayer = true
+        colorButton.layer?.cornerRadius = 4
+        colorButton.layer?.borderWidth = 1
+        colorButton.layer?.borderColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        colorButton.setAccessibilityTitle("Цвет")
+        hintTitles[ObjectIdentifier(colorButton)] = "Цвет"
+        colorButton.widthAnchor.constraint(equalToConstant: 34).isActive = true
+        colorButton.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        stack.addArrangedSubview(colorButton)
+        setColor(color)
 
         stack.addArrangedSubview(button("arrow.uturn.backward", "Отменить (⌘Z)", #selector(undo)))
         stack.addArrangedSubview(button("arrow.uturn.forward", "Повторить (⇧⌘Z)", #selector(redo)))
@@ -506,7 +627,7 @@ final class SelectionActionBar: NSView {
     /// or nil for padding, separators and the bar's own background.
     func control(at pointInSuperview: CGPoint) -> NSView? {
         guard let hit = hitTest(pointInSuperview) else { return nil }
-        return (hit is NSButton || hit is NSColorWell) ? hit : nil
+        return hit is NSButton ? hit : nil
     }
 
     /// Hint text plus the control's frame in the overlay's coordinates.
@@ -525,11 +646,13 @@ final class SelectionActionBar: NSView {
     }
 
     func setColor(_ color: NSColor) {
-        colorWell.color = color
+        colorButton.layer?.backgroundColor = color.cgColor
     }
 
-    func deactivateColorWell() {
-        colorWell.deactivate()
+    /// Where to anchor the palette, in the bar's superview coordinates.
+    var colorButtonFrame: CGRect {
+        guard let superview else { return colorButton.frame }
+        return colorButton.convert(colorButton.bounds, to: superview)
     }
 
     /// Icon-only: the name lives in the tooltip so the bar stays compact.
@@ -572,7 +695,7 @@ final class SelectionActionBar: NSView {
     @objc private func arrowTool() { select(.arrow) }
     @objc private func rectangleTool() { select(.rectangle) }
     @objc private func textTool() { select(.text) }
-    @objc private func colorChanged(_ sender: NSColorWell) { onColor(sender.color) }
+    @objc private func colorTapped() { onColorRequest() }
     @objc private func undo() { onUndo() }
     @objc private func redo() { onRedo() }
     @objc private func copyShot() { onAction(.copy) }
@@ -617,6 +740,7 @@ final class CaptureOverlayView: NSView {
     private var clearedSelectionOnMouseDown = false
     private var tracking: NSTrackingArea?
     private var actionBar: SelectionActionBar?
+    private var colorPalette: ColorPaletteView?
     private var activeHint: (text: String, anchor: CGRect)?
     private var hintWorkItem: DispatchWorkItem?
 
@@ -676,6 +800,7 @@ final class CaptureOverlayView: NSView {
     private func updateActionBar(visible: Bool) {
         guard visible, let selection else {
             actionBar?.isHidden = true
+            hideColorPalette()
             clearHint()
             return
         }
@@ -687,7 +812,7 @@ final class CaptureOverlayView: NSView {
             let created = SelectionActionBar(
                 color: currentColor,
                 onTool: { [weak self] tool in self?.setTool(tool) },
-                onColor: { [weak self] color in self?.currentColor = color },
+                onColorRequest: { [weak self] in self?.toggleColorPalette() },
                 onUndo: { [weak self] in self?.undo() },
                 onRedo: { [weak self] in self?.redo() },
                 onAction: { [weak self] action in self?.deliver(action) }
@@ -848,6 +973,50 @@ final class CaptureOverlayView: NSView {
         )
     }
 
+    private func toggleColorPalette() {
+        if colorPalette != nil {
+            hideColorPalette()
+        } else {
+            showColorPalette()
+        }
+    }
+
+    private func showColorPalette() {
+        guard let bar = actionBar, !bar.isHidden else { return }
+
+        let palette = ColorPaletteView(selected: currentColor) { [weak self] color in
+            guard let self else { return }
+            self.currentColor = color
+            self.actionBar?.setColor(color)
+            self.hideColorPalette()
+        }
+        addSubview(palette)
+        colorPalette = palette
+
+        let size = palette.preferredSize
+        let anchor = bar.colorButtonFrame
+        let gap: CGFloat = 6
+        var origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.minY - gap - size.height)
+        // Under the button by default, above it when there is no room below.
+        if origin.y < bounds.minY + 2 {
+            origin.y = anchor.maxY + gap
+        }
+        origin.x = min(max(origin.x, bounds.minX + 2), max(bounds.minX + 2, bounds.maxX - size.width - 2))
+        palette.frame = CGRect(origin: origin, size: size)
+        // Lay out now: the swatches must be hit-testable before the first click, not only
+        // after the run loop gets around to it.
+        palette.layoutSubtreeIfNeeded()
+    }
+
+    @discardableResult
+    func hideColorPalette() -> Bool {
+        guard let colorPalette else { return false }
+        colorPalette.removeFromSuperview()
+        self.colorPalette = nil
+        needsDisplay = true
+        return true
+    }
+
     private func globalRect(for localRect: CGRect) -> CGRect {
         localRect.offsetBy(dx: window?.frame.minX ?? 0, dy: window?.frame.minY ?? 0)
     }
@@ -966,6 +1135,9 @@ final class CaptureOverlayView: NSView {
     }
 
     func cursorTarget(at point: CGPoint) -> CursorTarget {
+        if let palette = colorPalette, palette.frame.contains(point) {
+            return palette.isOverSwatch(point) ? .panelControl : .panelBackground
+        }
         if let bar = actionBar, !bar.isHidden, bar.frame.contains(point) {
             return bar.control(at: point) != nil ? .panelControl : .panelBackground
         }
@@ -1049,8 +1221,14 @@ final class CaptureOverlayView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         clearedSelectionOnMouseDown = false
 
-        // Clicks that land on the action bar are the bar's business, not a new selection.
+        // Clicks on the panel or the palette belong to them, not to a new selection.
         if let bar = actionBar, !bar.isHidden, bar.frame.contains(point) { return }
+        if let palette = colorPalette {
+            if palette.frame.contains(point) { return }
+            // Anywhere else dismisses it, and that click does nothing else.
+            hideColorPalette()
+            return
+        }
 
         if event.clickCount >= 2, let selection, selection.contains(point) {
             confirmSelectionIfPossible()
@@ -1375,6 +1553,14 @@ final class CaptureOverlayView: NSView {
     var testActionBarFrame: CGRect? { actionBar.flatMap { $0.isHidden ? nil : $0.frame } }
     var testTool: OverlayTool { tool }
     var testActiveHint: String? { activeHint?.text }
+    var testColorPaletteFrame: CGRect? { colorPalette?.frame }
+    var testCurrentColor: NSColor { currentColor }
+    func testToggleColorPalette() { toggleColorPalette() }
+    func testPickPaletteColor(_ color: NSColor) {
+        currentColor = color
+        actionBar?.setColor(color)
+        hideColorPalette()
+    }
     func testForceHint(at point: CGPoint) {
         guard let bar = actionBar, !bar.isHidden, let hint = bar.hint(at: point) else { return }
         activeHint = hint
@@ -1520,6 +1706,10 @@ final class CaptureController {
         removeEscapeFallbackMonitor()
         escapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.isCapturing else { return event }
+            // Escape closes the colour palette first rather than aborting the capture.
+            if event.keyCode == 53, self.overlayView?.hideColorPalette() == true {
+                return nil
+            }
             // While the inline text field is open it owns Return and Escape.
             if self.overlayView?.isEditingText == true {
                 guard event.keyCode == 53 else { return event }

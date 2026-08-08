@@ -637,6 +637,100 @@ struct RegressionTests {
         #expect(OverlayTool.none.annotationKind == nil)
     }
 
+    // MARK: - Colour palette lives above the dimming
+
+    @Test("The palette opens under the colour button and is reachable")
+    func paletteOpensUnderColourButton() throws {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        #expect(overlay.testColorPaletteFrame == nil)
+        overlay.testToggleColorPalette()
+
+        let palette = try #require(overlay.testColorPaletteFrame)
+        let bar = try #require(overlay.testActionBarFrame)
+
+        // Fully on screen — the whole point is that it is no longer stuck behind the
+        // overlay or hanging off the edge.
+        #expect(CGRect(x: 0, y: 0, width: 1200, height: 800).contains(palette))
+        // Horizontally over the panel, vertically clear of it.
+        #expect(palette.midX > bar.minX && palette.midX < bar.maxX)
+        #expect(palette.intersection(bar).isEmpty)
+    }
+
+    @Test("Swatches in the palette take the pointing hand")
+    func paletteSwatchesArePointable() throws {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+        overlay.testToggleColorPalette()
+
+        let palette = try #require(overlay.testColorPaletteFrame)
+        var sawSwatch = false
+        for x in stride(from: palette.minX + 2, to: palette.maxX - 2, by: 3) {
+            for y in stride(from: palette.minY + 2, to: palette.maxY - 2, by: 3) {
+                let point = CGPoint(x: x, y: y)
+                if overlay.testCursorTarget(at: point) == .panelControl {
+                    sawSwatch = true
+                    #expect(overlay.testCursor(at: point) == NSCursor.pointingHand)
+                }
+            }
+        }
+        #expect(sawSwatch, "no swatch was reachable inside the palette")
+    }
+
+    @Test("Toggling closes the palette again")
+    func paletteToggles() {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        overlay.testToggleColorPalette()
+        #expect(overlay.testColorPaletteFrame != nil)
+        overlay.testToggleColorPalette()
+        #expect(overlay.testColorPaletteFrame == nil)
+        // Closing when nothing is open is a no-op, not a crash.
+        #expect(overlay.hideColorPalette() == false)
+    }
+
+    @Test("Picking a colour applies it and closes the palette")
+    func pickingColourApplies() {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+        overlay.testToggleColorPalette()
+
+        overlay.testPickPaletteColor(.systemBlue)
+        #expect(ColorPaletteView.sameColor(overlay.testCurrentColor, .systemBlue))
+        #expect(overlay.testColorPaletteFrame == nil)
+    }
+
+    @Test("Newly drawn annotations use the picked colour")
+    func pickedColourReachesAnnotations() throws {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testPickPaletteColor(.systemGreen)
+
+        overlay.testSetTool(.arrow)
+        overlay.testSimulateDraw(from: CGPoint(x: 250, y: 350), to: CGPoint(x: 450, y: 450))
+
+        let drawn = try #require(overlay.testAnnotations.first)
+        #expect(ColorPaletteView.sameColor(drawn.color, .systemGreen))
+    }
+
+    @Test("Colour comparison tolerates colour-space round trips")
+    func colourComparison() {
+        #expect(ColorPaletteView.sameColor(.systemRed, .systemRed))
+        #expect(ColorPaletteView.sameColor(.systemRed, .systemBlue) == false)
+        #expect(ColorPaletteView.colors.isEmpty == false)
+    }
+
     // MARK: - Hover hints and action animation
 
     @Test("Every panel control offers hint text")
