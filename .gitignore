@@ -1,0 +1,15 @@
+# SwiftPM build output
+.build/
+.swiftpm/
+Package.resolved
+
+# Assembled .app bundle
+dist/
+
+# Xcode / editor
+*.xcuserdatad
+*.xcuserstate
+DerivedData/
+
+# macOS
+.DS_Store
