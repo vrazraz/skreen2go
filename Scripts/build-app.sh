@@ -94,11 +94,11 @@ if [[ "$architectures" == "universal" ]]; then
 
     arm_scratch="$project_dir/.build/release-arm64"
     intel_scratch="$project_dir/.build/release-x86_64"
-    swift build -c release --triple arm64-apple-macosx14.0 --scratch-path "$arm_scratch"
-    swift build -c release --triple x86_64-apple-macosx14.0 --scratch-path "$intel_scratch"
+    swift build -c release --triple arm64-apple-macosx15.0 --scratch-path "$arm_scratch"
+    swift build -c release --triple x86_64-apple-macosx15.0 --scratch-path "$intel_scratch"
 
-    arm_bin_dir="$(swift build -c release --triple arm64-apple-macosx14.0 --scratch-path "$arm_scratch" --show-bin-path)"
-    intel_bin_dir="$(swift build -c release --triple x86_64-apple-macosx14.0 --scratch-path "$intel_scratch" --show-bin-path)"
+    arm_bin_dir="$(swift build -c release --triple arm64-apple-macosx15.0 --scratch-path "$arm_scratch" --show-bin-path)"
+    intel_bin_dir="$(swift build -c release --triple x86_64-apple-macosx15.0 --scratch-path "$intel_scratch" --show-bin-path)"
     universal_binary="$project_dir/.build/Skreen2Go-universal"
     lipo -create \
         "$arm_bin_dir/Skreen2Go" \

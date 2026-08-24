@@ -6,7 +6,7 @@
 
 ## Требования
 
-- macOS 14+
+- macOS 15+
 - Swift 6.1+ (манифест SwiftPM использует формат 5.9; для universal/App Store-сборки нужен Xcode)
 
 ## Сборка и запуск

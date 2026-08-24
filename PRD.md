@@ -10,7 +10,7 @@
 
 ## 2. Целевая платформа
 
-- macOS 14+
+- macOS 15+
 - Apple Silicon и Intel — сборка universal (`ARCHS=universal`)
 - Работа только из menu bar
 - Без отдельного окна в Dock
