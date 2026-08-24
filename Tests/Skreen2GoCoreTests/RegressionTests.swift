@@ -1259,13 +1259,13 @@ struct RegressionTests {
     @Test("The panel background style round-trips and resets")
     func panelBackgroundSettingRoundTrips() {
         let settings = makeSettings()
-        #expect(settings.panelBackground == .glass)
+        #expect(settings.panelBackground == .smoke)
 
         settings.panelBackground = .plasma
         #expect(settings.panelBackground == .plasma)
 
         settings.reset()
-        #expect(settings.panelBackground == .glass)
+        #expect(settings.panelBackground == .smoke)
     }
 
     @Test("The panel background offers no hint")

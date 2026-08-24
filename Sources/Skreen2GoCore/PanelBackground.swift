@@ -9,14 +9,16 @@ import Foundation
 /// all. Nothing here uses `backgroundFilters` or redraws on a timer, which are the two
 /// ways a decorative background turns into a running cost.
 enum PanelBackgroundStyle: String, CaseIterable {
+    case smoke
     case glass
     case blobs
     case plasma
 
-    static let `default` = PanelBackgroundStyle.glass
+    static let `default` = PanelBackgroundStyle.smoke
 
     var title: String {
         switch self {
+        case .smoke: return "panelBackground.smoke".localized("Curling smoke")
         case .glass: return "panelBackground.glass".localized("Live glass")
         case .blobs: return "panelBackground.blobs".localized("Drifting blobs")
         case .plasma: return "panelBackground.plasma".localized("Plasma")
@@ -68,9 +70,58 @@ final class PanelBackgroundView: NSView {
 
     private func build() {
         switch style {
+        case .smoke: buildSmoke()
         case .glass: buildGlass()
         case .blobs: buildBlobs()
         case .plasma: buildPlasma()
+        }
+    }
+
+    /// Real particles rather than a moving picture of some: `CAEmitterLayer` is simulated
+    /// by the window server on the GPU, so a few dozen puffs cost the app nothing per
+    /// frame — the same budget as the gradient styles, for far more life.
+    private func buildSmoke() {
+        layer?.backgroundColor = PanelStyle.fill.cgColor
+        let puff = Self.puffImage()
+
+        for (index, colour) in Self.smokeTints.enumerated() {
+            let emitter = CAEmitterLayer()
+            // Born throughout the panel rather than along one edge: it is only about 50pt
+            // tall, so anything rising from the bottom would be gone before it read as
+            // smoke at all.
+            emitter.emitterShape = .rectangle
+            emitter.emitterMode = .volume
+            emitter.renderMode = .unordered
+            // A fixed seed per emitter keeps each plume's character stable between runs
+            // instead of occasionally starting out bunched up.
+            emitter.seed = UInt32(1_301 + index * 977)
+
+            let cell = CAEmitterCell()
+            cell.contents = puff
+            cell.color = colour.cgColor
+            cell.birthRate = 5
+            cell.lifetime = 8
+            cell.lifetimeRange = 3
+            // Slow and wide: smoke reads by how it spreads, not by how fast it travels.
+            // The drift is mostly sideways, along the panel's long axis, so a puff stays
+            // in view for most of its life.
+            cell.velocity = 5
+            cell.velocityRange = 4
+            cell.emissionLongitude = .pi / 2
+            cell.emissionRange = .pi
+            cell.yAcceleration = 1.5
+            // Opposite sideways drift per plume is what makes them wind around each other.
+            cell.xAcceleration = index.isMultiple(of: 2) ? 9 : -9
+            cell.scale = 0.45
+            cell.scaleRange = 0.3
+            cell.scaleSpeed = 0.16
+            cell.spin = 0.6
+            cell.spinRange = 1.1
+            cell.alphaSpeed = -0.1
+            emitter.emitterCells = [cell]
+
+            layer?.addSublayer(emitter)
+            styleLayers.append(emitter)
         }
     }
 
@@ -149,6 +200,32 @@ final class PanelBackgroundView: NSView {
         defer { CATransaction.commit() }
 
         switch style {
+        case .smoke:
+            for (index, emitter) in styleLayers.compactMap({ $0 as? CAEmitterLayer }).enumerated() {
+                emitter.frame = bounds
+                emitter.emitterSize = CGSize(width: bounds.width * 0.6, height: bounds.height)
+                let origin = CGPoint(x: bounds.midX, y: bounds.midY)
+                emitter.emitterPosition = origin
+
+                // The source itself wanders on an ellipse, so the plumes curl instead of
+                // rising in a straight column.
+                let path = CGMutablePath()
+                path.addEllipse(in: CGRect(
+                    x: origin.x - bounds.width * 0.2,
+                    y: origin.y - bounds.height * 0.3,
+                    width: bounds.width * 0.4,
+                    height: bounds.height * 0.6
+                ))
+                let wander = CAKeyframeAnimation(keyPath: "emitterPosition")
+                wander.path = path
+                wander.duration = 13 + Double(index) * 5
+                wander.repeatCount = .infinity
+                wander.calculationMode = .paced
+                wander.timeOffset = Double(index) * 6
+                wander.isRemovedOnCompletion = false
+                emitter.add(wander, forKey: "wander")
+            }
+
         case .glass:
             // Sized here for the same reason the background itself is pinned: it is built
             // before the panel knows how wide its controls make it.
@@ -211,6 +288,49 @@ final class PanelBackgroundView: NSView {
     }
 
     // MARK: - Ingredients
+
+    /// Far stronger than the gradient styles': a puff is thin on its own, and only the
+    /// places where several overlap should read at all.
+    private static let smokeTints: [NSColor] = [
+        NSColor.systemTeal.withAlphaComponent(0.5),
+        NSColor.systemIndigo.withAlphaComponent(0.45),
+        NSColor.systemPurple.withAlphaComponent(0.4)
+    ]
+
+    /// One soft round blob, tinted per plume by `CAEmitterCell.color`.
+    private static func puffImage() -> CGImage? {
+        let side = 64
+        guard let context = CGContext(
+            data: nil,
+            width: side,
+            height: side,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let centre = CGPoint(x: side / 2, y: side / 2)
+        guard let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [
+                CGColor(red: 1, green: 1, blue: 1, alpha: 1),
+                CGColor(red: 1, green: 1, blue: 1, alpha: 0.5),
+                CGColor(red: 1, green: 1, blue: 1, alpha: 0)
+            ] as CFArray,
+            locations: [0, 0.45, 1]
+        ) else { return nil }
+
+        context.drawRadialGradient(
+            gradient,
+            startCenter: centre,
+            startRadius: 0,
+            endCenter: centre,
+            endRadius: CGFloat(side) / 2,
+            options: []
+        )
+        return context.makeImage()
+    }
 
     private static let tints: [NSColor] = [
         NSColor.systemTeal.withAlphaComponent(tintAlpha),
