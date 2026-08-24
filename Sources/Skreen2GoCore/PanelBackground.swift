@@ -9,16 +9,18 @@ import Foundation
 /// all. Nothing here uses `backgroundFilters` or redraws on a timer, which are the two
 /// ways a decorative background turns into a running cost.
 enum PanelBackgroundStyle: String, CaseIterable {
+    case liquidGlass
     case glow
     case smoke
     case glass
     case blobs
     case plasma
 
-    static let `default` = PanelBackgroundStyle.glow
+    static let `default` = PanelBackgroundStyle.liquidGlass
 
     var title: String {
         switch self {
+        case .liquidGlass: return "panelBackground.liquidGlass".localized("Liquid Glass")
         case .glow: return "panelBackground.glow".localized("Glowing edge")
         case .smoke: return "panelBackground.smoke".localized("Curling smoke")
         case .glass: return "panelBackground.glass".localized("Live glass")
@@ -67,7 +69,7 @@ final class PanelBackgroundView: NSView {
         super.layout()
         guard bounds.size != maskedSize, bounds.width > 0, bounds.height > 0 else { return }
         maskedSize = bounds.size
-        if !isEdgeLit { applyFeather() }
+        if wantsFeatheredEdges { applyFeather() }
         layoutStyleLayers()
     }
 
@@ -77,13 +79,44 @@ final class PanelBackgroundView: NSView {
     /// that fades out, so it keeps its rounded rectangle and lets the glow spill past it.
     private var isEdgeLit: Bool { style == .glow }
 
+    /// Liquid Glass draws its own rounded shape and its own edge, so feathering it would
+    /// only smear what the system carefully rendered.
+    private var wantsFeatheredEdges: Bool { !isEdgeLit && style != .liquidGlass }
+
     private func build() {
         switch style {
+        case .liquidGlass: buildLiquidGlass()
         case .glow: buildGlow()
         case .smoke: buildSmoke()
         case .glass: buildGlass()
         case .blobs: buildBlobs()
         case .plasma: buildPlasma()
+        }
+    }
+
+    /// The system's own Liquid Glass, rather than an imitation of it.
+    ///
+    /// `NSGlassEffectView` arrived in macOS 26, and the app still runs on 15, so this
+    /// falls back to the older material where the class does not exist. The two are not
+    /// the same thing: the older one is a static blur, this one reacts to what is behind
+    /// and around it.
+    private func buildLiquidGlass() {
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = cornerRadius
+            glass.style = .regular
+            addSubview(glass)
+            glassView = glass
+        } else {
+            let effect = NSVisualEffectView()
+            effect.material = .hudWindow
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = cornerRadius
+            effect.layer?.masksToBounds = true
+            addSubview(effect)
+            effectView = effect
         }
     }
 
@@ -254,6 +287,8 @@ final class PanelBackgroundView: NSView {
     private var glowLayer: CAGradientLayer?
     private var glowContainer: CALayer?
     private var glowTint: CALayer?
+    /// Typed loosely so the property itself does not need the newer SDK to exist.
+    private var glassView: NSView?
     private var isPointerInside = false
 
     /// Fades the lit edge out while the pointer is over the panel, then stops it turning
@@ -304,6 +339,10 @@ final class PanelBackgroundView: NSView {
         defer { CATransaction.commit() }
 
         switch style {
+        case .liquidGlass:
+            glassView?.frame = bounds
+            effectView?.frame = bounds
+
         case .glow:
             effectView?.frame = bounds
             glowTint?.frame = CGRect(origin: .zero, size: bounds.size)

@@ -19,8 +19,19 @@ app_version="${APP_VERSION:-$default_version}"
 app_build="${APP_BUILD:-$default_build}"
 architectures="${ARCHS:-native}"
 
-if [[ "$architectures" == "universal" && -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app ]]; then
+# Xcode's SDK, not the Command Line Tools one, for every build now: the panel's Liquid
+# Glass background uses NSGlassEffectView, which arrived in the macOS 26 SDK. The app
+# still runs on macOS 15 — the class is behind an availability check — but it has to be
+# compiled against an SDK that knows the class exists.
+if [[ -z "${DEVELOPER_DIR:-}" && -d /Applications/Xcode.app ]]; then
     export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+fi
+
+sdk_version="$(xcrun --sdk macosx --show-sdk-version 2>/dev/null || echo 0)"
+if [[ "${sdk_version%%.*}" -lt 26 ]]; then
+    print -u2 "Building needs the macOS 26 SDK or newer, found $sdk_version."
+    print -u2 "Install Xcode 26 and point DEVELOPER_DIR at it."
+    exit 2
 fi
 
 if [[ ! "$app_version" =~ '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' ]]; then
