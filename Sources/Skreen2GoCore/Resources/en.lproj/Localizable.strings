@@ -60,6 +60,7 @@
 "settings.language.system" = "System";
 "settings.color" = "Default color";
 "settings.panelBackground" = "Panel background";
+"panelBackground.glow" = "Glowing edge";
 "panelBackground.smoke" = "Curling smoke";
 "panelBackground.glass" = "Live glass";
 "panelBackground.blobs" = "Drifting blobs";

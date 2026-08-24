@@ -9,15 +9,17 @@ import Foundation
 /// all. Nothing here uses `backgroundFilters` or redraws on a timer, which are the two
 /// ways a decorative background turns into a running cost.
 enum PanelBackgroundStyle: String, CaseIterable {
+    case glow
     case smoke
     case glass
     case blobs
     case plasma
 
-    static let `default` = PanelBackgroundStyle.smoke
+    static let `default` = PanelBackgroundStyle.glow
 
     var title: String {
         switch self {
+        case .glow: return "panelBackground.glow".localized("Glowing edge")
         case .smoke: return "panelBackground.smoke".localized("Curling smoke")
         case .glass: return "panelBackground.glass".localized("Live glass")
         case .blobs: return "panelBackground.blobs".localized("Drifting blobs")
@@ -62,19 +64,54 @@ final class PanelBackgroundView: NSView {
         super.layout()
         guard bounds.size != maskedSize, bounds.width > 0, bounds.height > 0 else { return }
         maskedSize = bounds.size
-        applyFeather()
+        if !isEdgeLit { applyFeather() }
         layoutStyleLayers()
     }
 
     // MARK: - Construction
 
+    /// The glowing edge is the one style built around a crisp outline rather than a fill
+    /// that fades out, so it keeps its rounded rectangle and lets the glow spill past it.
+    private var isEdgeLit: Bool { style == .glow }
+
     private func build() {
         switch style {
+        case .glow: buildGlow()
         case .smoke: buildSmoke()
         case .glass: buildGlass()
         case .blobs: buildBlobs()
         case .plasma: buildPlasma()
         }
+    }
+
+    /// A rotating gradient shown twice: once as a rim just outside the panel, once
+    /// larger and softened underneath as its glow. Both turn together.
+    ///
+    /// The original does the soft copy with `filter: blur()`. That is skipped here, and
+    /// deliberately: a linear gradient is already smooth, so blurring one only softens the
+    /// edges of its rectangle — which a feathered mask does for nothing, where a blur
+    /// filter would be recomputed on every frame of the rotation.
+    private func buildGlow() {
+        layer?.masksToBounds = false
+
+        glowLayer = Self.spinningGradient()
+        rimLayer = Self.spinningGradient()
+        if let glowLayer { layer?.addSublayer(glowLayer) }
+        if let rimLayer { layer?.addSublayer(rimLayer) }
+
+        // The fill sits on top of the rim, so only the rim's outer margin shows.
+        let effect = NSVisualEffectView()
+        effect.material = .hudWindow
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        // Dark, like the card this comes from: the gradient is what should carry the
+        // colour, and it cannot against a light fill.
+        effect.appearance = NSAppearance(named: .darkAqua)
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = cornerRadius
+        effect.layer?.masksToBounds = true
+        addSubview(effect)
+        effectView = effect
     }
 
     /// Real particles rather than a moving picture of some: `CAEmitterLayer` is simulated
@@ -191,6 +228,8 @@ final class PanelBackgroundView: NSView {
     // MARK: - Layout
 
     private var styleLayers: [CALayer] = []
+    private var rimLayer: CAGradientLayer?
+    private var glowLayer: CAGradientLayer?
     private var blobDrifts: [CABasicAnimation] = []
     private var plasmaDirections: [CGFloat] = []
 
@@ -200,6 +239,32 @@ final class PanelBackgroundView: NSView {
         defer { CATransaction.commit() }
 
         switch style {
+        case .glow:
+            effectView?.frame = bounds
+
+            let rimWidth = Self.rimWidth
+            rimLayer?.frame = bounds.insetBy(dx: -rimWidth, dy: -rimWidth)
+            rimLayer?.cornerRadius = cornerRadius + rimWidth
+
+            // Larger, dropped a little, and faded at its edges — the soft copy from the
+            // original, without a filter running behind it.
+            let spread = max(bounds.height * 0.55, 18)
+            let glowFrame = bounds
+                .insetBy(dx: -spread, dy: -spread)
+                .offsetBy(dx: 0, dy: -spread * 0.35)
+            glowLayer?.frame = glowFrame
+            glowLayer?.opacity = 0.55
+            if let mask = Self.featherImage(
+                size: glowFrame.size,
+                cornerRadius: cornerRadius + spread,
+                feather: spread
+            ) {
+                let maskLayer = CALayer()
+                maskLayer.frame = CGRect(origin: .zero, size: glowFrame.size)
+                maskLayer.contents = mask.cgImage(forProposedRect: nil, context: nil, hints: nil)
+                glowLayer?.mask = maskLayer
+            }
+
         case .smoke:
             for (index, emitter) in styleLayers.compactMap({ $0 as? CAEmitterLayer }).enumerated() {
                 emitter.frame = bounds
@@ -288,6 +353,48 @@ final class PanelBackgroundView: NSView {
     }
 
     // MARK: - Ingredients
+
+    private static let rimWidth: CGFloat = 2
+    /// The gradient from the card this is modelled on.
+    private static let glowColours: [CGColor] = [
+        NSColor(red: 0.365, green: 0.863, blue: 1.0, alpha: 1).cgColor,
+        NSColor(red: 0.235, green: 0.404, blue: 0.890, alpha: 1).cgColor,
+        NSColor(red: 0.306, green: 0.0, blue: 0.761, alpha: 1).cgColor
+    ]
+
+    /// A linear gradient whose angle turns a full circle, which is what the original
+    /// animates through a custom `<angle>` property. `CAGradientLayer` has no angle, so
+    /// the two ends are walked around a circle instead — the same thing, expressed in the
+    /// terms Core Animation understands.
+    private static func spinningGradient() -> CAGradientLayer {
+        let gradient = CAGradientLayer()
+        gradient.colors = glowColours
+        gradient.locations = [0, 0.43, 1]
+
+        let steps = 36
+        var starts: [CGPoint] = []
+        var ends: [CGPoint] = []
+        for step in 0...steps {
+            let angle = 2 * Double.pi * Double(step) / Double(steps)
+            let dx = CGFloat(cos(angle)) / 2
+            let dy = CGFloat(sin(angle)) / 2
+            starts.append(CGPoint(x: 0.5 - dx, y: 0.5 - dy))
+            ends.append(CGPoint(x: 0.5 + dx, y: 0.5 + dy))
+        }
+        gradient.startPoint = starts[0]
+        gradient.endPoint = ends[0]
+
+        for (keyPath, values) in [("startPoint", starts), ("endPoint", ends)] {
+            let spin = CAKeyframeAnimation(keyPath: keyPath)
+            spin.values = values
+            spin.duration = 2.5
+            spin.calculationMode = .linear
+            spin.repeatCount = .infinity
+            spin.isRemovedOnCompletion = false
+            gradient.add(spin, forKey: keyPath)
+        }
+        return gradient
+    }
 
     /// Far stronger than the gradient styles': a puff is thin on its own, and only the
     /// places where several overlap should read at all.
