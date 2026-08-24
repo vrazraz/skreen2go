@@ -1318,6 +1318,21 @@ struct RegressionTests {
         #expect(settings.panelBackground == .glow)
     }
 
+    @Test("The colour button matches its neighbours and says it opens a palette")
+    func colorButtonMatchesTheSmallButtons() throws {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        let colour = try #require(overlay.testColorButtonShape)
+        let neighbour = try #require(overlay.testSmallButtonShape)
+        #expect(isClose(colour.width, neighbour.width))
+        #expect(isClose(colour.height, neighbour.height))
+        // Nothing else about it says the click opens something rather than doing something.
+        #expect(overlay.testColorButtonHasChevron)
+    }
+
     @Test("The panel background offers no hint")
     func panelBackgroundHasNoHint() throws {
         let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))

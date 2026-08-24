@@ -245,7 +245,12 @@ private final class CircularButton: NSButton {
     var glyph: NSColor = PanelStyle.icon { didSet { needsLayout = true } }
     var selectedGlyph: NSColor = .white
 
+    /// A small glyph in the trailing corner — used to say that a button opens something
+    /// rather than acting on its own.
+    var accessory: CGImage? { didSet { needsLayout = true } }
+
     private let shape = CALayer()
+    private let accessoryLayer = CALayer()
 
     override var intrinsicContentSize: NSSize { shapeSize }
 
@@ -282,6 +287,21 @@ private final class CircularButton: NSButton {
         shape.borderWidth = 1
         shape.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
         contentTintColor = isSelected ? selectedGlyph : glyph
+
+        guard let accessory else {
+            accessoryLayer.removeFromSuperlayer()
+            return
+        }
+        if accessoryLayer.superlayer == nil { layer?.addSublayer(accessoryLayer) }
+        accessoryLayer.contents = accessory
+        accessoryLayer.contentsGravity = .resizeAspect
+        let side: CGFloat = 7
+        accessoryLayer.frame = CGRect(
+            x: shape.frame.maxX - side - 3,
+            y: shape.frame.midY - side / 2,
+            width: side,
+            height: side
+        )
     }
 }
 
@@ -292,7 +312,7 @@ final class SelectionActionBar: NSView {
     private let onRedo: () -> Void
     private let onAction: (SelectionAction) -> Void
 
-    private let colorButton = NSButton(title: "", target: nil, action: nil)
+    private let colorButton = CircularButton(title: "", target: nil, action: nil)
     private var toolButtons: [(button: NSButton, tool: OverlayTool)] = []
     /// Audio sources for the next recording. Kept apart from `toolButtons`, whose states
     /// are driven by the active annotation tool.
@@ -374,14 +394,13 @@ final class SelectionActionBar: NSView {
         colorButton.action = #selector(colorTapped)
         colorButton.isBordered = false
         colorButton.setButtonType(.momentaryChange)
-        colorButton.wantsLayer = true
-        colorButton.layer?.cornerRadius = 4
-        colorButton.layer?.borderWidth = 1
-        colorButton.layer?.borderColor = NSColor.black.withAlphaComponent(0.35).cgColor
+        // The same shape and size as its neighbours: it is a button like any other, and
+        // only its fill says what it is for.
+        colorButton.shapeSize = Self.secondarySize
+        colorButton.shapeCornerRadius = 7
         colorButton.setAccessibilityTitle("tool.color".localized("Color"))
         hintTitles[ObjectIdentifier(colorButton)] = "tool.color".localized("Color")
-        colorButton.widthAnchor.constraint(equalToConstant: 34).isActive = true
-        colorButton.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        colorButton.widthAnchor.constraint(equalToConstant: Self.secondarySize.width).isActive = true
         stack.addArrangedSubview(colorButton)
         setColor(color)
 
@@ -481,7 +500,33 @@ final class SelectionActionBar: NSView {
     }
 
     func setColor(_ color: NSColor) {
-        colorButton.layer?.backgroundColor = color.cgColor
+        colorButton.fill = color
+        // The chevron has to stay legible on black and on white alike, so it takes the
+        // opposite of whatever it is sitting on.
+        let onDark = (color.usingColorSpace(.deviceRGB)?.brightnessComponent ?? 1) < 0.6
+        colorButton.accessory = Self.chevron(tint: onDark ? .white : PanelStyle.icon)
+    }
+
+    /// Says that this button opens a palette rather than acting on its own.
+    private static func chevron(tint: NSColor) -> CGImage? {
+        guard let symbol = NSImage(
+            systemSymbolName: "chevron.down",
+            accessibilityDescription: nil
+        ) else { return nil }
+
+        let size = NSSize(width: 14, height: 14)
+        let tinted = NSImage(size: size)
+        tinted.lockFocus()
+        symbol.draw(
+            in: CGRect(origin: .zero, size: size),
+            from: .zero,
+            operation: .sourceOver,
+            fraction: 1
+        )
+        tint.set()
+        CGRect(origin: .zero, size: size).fill(using: .sourceAtop)
+        tinted.unlockFocus()
+        return tinted.cgImage(forProposedRect: nil, context: nil, hints: nil)
     }
 
     /// Where to anchor the palette, in the bar's superview coordinates.
@@ -644,6 +689,13 @@ final class SelectionActionBar: NSView {
 
 extension SelectionActionBar {
     var testPrimaryButtons: [NSButton] { primaryButtons }
+    var testColorButtonShape: CGRect { colorButton.circle }
+    var testColorButtonHasChevron: Bool { colorButton.accessory != nil }
+    static var testSecondarySize: NSSize { secondarySize }
+    /// One of the ordinary small buttons, for comparison.
+    var testSmallButtonShape: CGRect? {
+        allButtons.first { $0 !== colorButton && !primaryButtons.contains($0) }?.circle
+    }
     /// The circles as drawn, which is what the shape has to be judged by: the buttons'
     /// own frames are whatever AppKit decides.
     var testPrimaryCircles: [(rect: CGRect, cornerRadius: CGFloat)] {
@@ -1593,6 +1645,9 @@ final class CaptureOverlayView: NSView {
     var testActionBarIsVisible: Bool { actionBar.map { !$0.isHidden } ?? false }
     var testActionBarFrame: CGRect? { actionBar.flatMap { $0.isHidden ? nil : $0.frame } }
     var testPrimaryButtons: [NSButton] { actionBar?.testPrimaryButtons ?? [] }
+    var testColorButtonShape: CGRect? { actionBar?.testColorButtonShape }
+    var testColorButtonHasChevron: Bool { actionBar?.testColorButtonHasChevron ?? false }
+    var testSmallButtonShape: CGRect? { actionBar?.testSmallButtonShape }
     var testPrimaryCircles: [(rect: CGRect, cornerRadius: CGFloat)] {
         actionBar?.testPrimaryCircles ?? []
     }
