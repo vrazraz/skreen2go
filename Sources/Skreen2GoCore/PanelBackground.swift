@@ -120,14 +120,20 @@ final class PanelBackgroundView: NSView {
         effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
-        // Dark, like the card this comes from: the gradient is what should carry the
-        // colour, and it cannot against a light fill.
-        effect.appearance = NSAppearance(named: .darkAqua)
+        effect.appearance = NSAppearance(named: .aqua)
         effect.wantsLayer = true
         effect.layer?.cornerRadius = cornerRadius
         effect.layer?.masksToBounds = true
         addSubview(effect)
         effectView = effect
+
+        // Painted over the material rather than instead of it: the blur stays, and the
+        // panel lands on a definite tone rather than whatever the desktop happens to be.
+        let tint = CALayer()
+        tint.backgroundColor = Self.glowFill.cgColor
+        tint.cornerRadius = cornerRadius
+        effect.layer?.addSublayer(tint)
+        glowTint = tint
     }
 
     /// Real particles rather than a moving picture of some: `CAEmitterLayer` is simulated
@@ -247,6 +253,7 @@ final class PanelBackgroundView: NSView {
     private var rimLayer: CAGradientLayer?
     private var glowLayer: CAGradientLayer?
     private var glowContainer: CALayer?
+    private var glowTint: CALayer?
 
     /// For tests: the blur actually attached to the glow, and its radius.
     var testGlowBlurRadius: CGFloat? {
@@ -266,6 +273,7 @@ final class PanelBackgroundView: NSView {
         switch style {
         case .glow:
             effectView?.frame = bounds
+            glowTint?.frame = CGRect(origin: .zero, size: bounds.size)
 
             let rimWidth = Self.rimWidth
             rimLayer?.frame = bounds.insetBy(dx: -rimWidth, dy: -rimWidth)
@@ -382,7 +390,11 @@ final class PanelBackgroundView: NSView {
 
     // MARK: - Ingredients
 
-    private static let rimWidth: CGFloat = 2
+    private static let rimWidth: CGFloat = 1
+    /// A couple of tones below `PanelStyle.buttonFill`, so the controls sit slightly
+    /// proud of the panel instead of dissolving into it. Part-transparent, so the blur
+    /// underneath still shows through.
+    private static let glowFill = NSColor(white: 0.85, alpha: 0.74)
     /// Greyscale, dark to light. The card this is modelled on runs blue to violet; here
     /// the panel sits over the very thing being captured, and a colourless sweep lights
     /// the edge without tinting what is behind it.
