@@ -87,6 +87,11 @@
 "error.reset.launchAtLogin" = "Настройки сброшены, но автозапуск отключить не удалось: %@";
 "error.hotKey.title" = "Горячая клавиша не зарегистрирована";
 "error.hotKey.body" = "Комбинацию %1$@ не удалось назначить (код ошибки %2$d). Обычно это значит, что её уже занимает macOS или другое приложение.\nВыберите другую комбинацию в настройках Skreen2Go — снимок экрана по-прежнему доступен через иконку в menu bar.";
+"error.recording.alreadyRunning" = "Запись уже идёт.";
+"error.recording.selectionTooSmall" = "Выделенная область слишком мала для записи.";
+"error.recording.startFailed" = "Не удалось начать запись: %@";
+"error.recording.writeFailed" = "Не удалось сохранить запись: %@";
+"error.recording.finishTimedOut" = "Запись не успела дописаться на диск.";
 
 /* Buttons */
 "button.openSettings" = "Открыть настройки";

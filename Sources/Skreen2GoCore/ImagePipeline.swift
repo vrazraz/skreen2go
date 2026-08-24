@@ -35,12 +35,26 @@ final class BlurCache {
 }
 
 enum ScreenshotNaming {
-    /// PRD §9: `Screenshot 2026-08-06 at 14.30.25.png`
-    static func fileName(for format: OutputFormat, date: Date) -> String {
+    static let screenshotPrefix = "Screenshot"
+    static let recordingPrefix = "Recording"
+
+    /// Deliberately `en_US_POSIX`: the name is a stable identifier, not something to be
+    /// read in the user's own calendar and digits.
+    static func timestamp(for date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-        return "Screenshot \(formatter.string(from: date)).\(fileExtension(for: format))"
+        return formatter.string(from: date)
+    }
+
+    /// PRD §9: `Screenshot 2026-08-06 at 14.30.25.png`, and the same shape for a
+    /// recording — `Recording 2026-08-06 at 14.30.25.mp4`.
+    static func fileName(prefix: String, extension ext: String, date: Date) -> String {
+        "\(prefix) \(timestamp(for: date)).\(ext)"
+    }
+
+    static func fileName(for format: OutputFormat, date: Date) -> String {
+        fileName(prefix: screenshotPrefix, extension: fileExtension(for: format), date: date)
     }
 
     static func fileExtension(for format: OutputFormat) -> String {
@@ -52,14 +66,14 @@ enum ScreenshotNaming {
 
     static func uniqueURL(
         in folder: URL,
-        format: OutputFormat,
+        prefix: String,
+        extension ext: String,
         date: Date,
         fileManager: FileManager = .default
     ) -> URL {
-        let fileName = fileName(for: format, date: date)
-        let baseName = (fileName as NSString).deletingPathExtension
-        let ext = fileExtension(for: format)
-        var candidate = folder.appendingPathComponent(fileName)
+        let baseName = (fileName(prefix: prefix, extension: ext, date: date) as NSString)
+            .deletingPathExtension
+        var candidate = folder.appendingPathComponent("\(baseName).\(ext)")
         var suffix = 2
 
         while fileManager.fileExists(atPath: candidate.path) {
@@ -67,6 +81,21 @@ enum ScreenshotNaming {
             suffix += 1
         }
         return candidate
+    }
+
+    static func uniqueURL(
+        in folder: URL,
+        format: OutputFormat,
+        date: Date,
+        fileManager: FileManager = .default
+    ) -> URL {
+        uniqueURL(
+            in: folder,
+            prefix: screenshotPrefix,
+            extension: fileExtension(for: format),
+            date: date,
+            fileManager: fileManager
+        )
     }
 }
 

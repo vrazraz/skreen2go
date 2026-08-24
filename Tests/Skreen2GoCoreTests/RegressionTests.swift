@@ -1910,4 +1910,305 @@ struct RegressionTests {
         let jpeg = try #require(ImageExporter.data(for: document, format: .jpeg, settings: settings))
         #expect(jpeg.isEmpty == false)
     }
+
+    // MARK: - Recording geometry
+
+    private func display(
+        id: CGDirectDisplayID,
+        frame: CGRect,
+        scale: CGFloat
+    ) -> RecordingDisplay {
+        RecordingDisplay(displayID: id, frame: frame, backingScaleFactor: scale)
+    }
+
+    private var recordingOptions: RecordingOptions {
+        RecordingOptions(
+            capturesSystemAudio: false,
+            capturesMicrophone: false,
+            showsCursor: true,
+            showsClicks: true
+        )
+    }
+
+    /// A laptop screen with a larger, non-Retina display to its right.
+    private var twoDisplays: [RecordingDisplay] {
+        [
+            display(id: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900), scale: 2),
+            display(id: 2, frame: CGRect(x: 1440, y: 0, width: 1920, height: 1080), scale: 1)
+        ]
+    }
+
+    @Test("A region picks the display that holds most of it")
+    func regionPicksDominantDisplay() throws {
+        let onSecond = CGRect(x: 1500, y: 100, width: 400, height: 300)
+        let plan = try RecordingGeometry.regionPlan(
+            for: onSecond,
+            displays: twoDisplays,
+            options: recordingOptions
+        )
+
+        guard case .region(let displayID, _) = plan.source else {
+            Issue.record("expected a region source")
+            return
+        }
+        #expect(displayID == 2)
+        #expect(plan.trimmedToOneDisplay == false)
+    }
+
+    @Test("A selection spanning two displays is trimmed to the dominant one")
+    func spanningSelectionIsTrimmed() throws {
+        // 300pt on the left display, 100pt on the right one.
+        let spanning = CGRect(x: 1140, y: 100, width: 400, height: 200)
+        let plan = try RecordingGeometry.regionPlan(
+            for: spanning,
+            displays: twoDisplays,
+            options: recordingOptions
+        )
+
+        guard case .region(let displayID, let sourceRect) = plan.source else {
+            Issue.record("expected a region source")
+            return
+        }
+        #expect(displayID == 1)
+        #expect(plan.trimmedToOneDisplay)
+        // Clipped to the left display, so it can never reach past its 1440pt width.
+        #expect(sourceRect.maxX <= 1440)
+        #expect(isClose(sourceRect.width, 300))
+    }
+
+    @Test("Recording geometry uses the chosen display's scale, not the largest one")
+    func regionUsesOwnDisplayScale() throws {
+        let onFirst = CGRect(x: 100, y: 100, width: 200, height: 100)
+        let onSecond = CGRect(x: 1600, y: 100, width: 200, height: 100)
+
+        let retina = try RecordingGeometry.regionPlan(
+            for: onFirst,
+            displays: twoDisplays,
+            options: recordingOptions
+        )
+        let plain = try RecordingGeometry.regionPlan(
+            for: onSecond,
+            displays: twoDisplays,
+            options: recordingOptions
+        )
+
+        #expect(retina.pixelWidth == 400)
+        #expect(plain.pixelWidth == 200)
+    }
+
+    @Test("A region is flipped into the display's own top-left space")
+    func sourceRectIsDisplayLocalAndTopLeft() {
+        let screen = display(id: 2, frame: CGRect(x: 1440, y: 0, width: 1920, height: 1080), scale: 1)
+        // 200pt tall, its top edge 100pt below the top of the display.
+        let area = CGRect(x: 1540, y: 780, width: 300, height: 200)
+
+        let rect = RecordingGeometry.sourceRect(for: area, on: screen)
+        #expect(isClose(rect.minX, 100))
+        #expect(isClose(rect.minY, 100))
+        #expect(isClose(rect.width, 300))
+        #expect(isClose(rect.height, 200))
+    }
+
+    @Test("H.264 cannot encode odd pixel sizes, so the region snaps to even")
+    func pixelSizesAreEven() throws {
+        let odd = CGRect(x: 10, y: 10, width: 101, height: 303)
+        let plan = try RecordingGeometry.regionPlan(
+            for: odd,
+            displays: [display(id: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900), scale: 1)],
+            options: recordingOptions
+        )
+
+        #expect(plan.pixelWidth % 2 == 0)
+        #expect(plan.pixelHeight % 2 == 0)
+        #expect(plan.pixelWidth == 100)
+        #expect(plan.pixelHeight == 302)
+    }
+
+    @Test("The source rect matches the pixel size exactly, so nothing is letterboxed")
+    func sourceRectMatchesPixelSize() throws {
+        let odd = CGRect(x: 0, y: 0, width: 101.5, height: 77.25)
+        for scale in [CGFloat(1), CGFloat(2)] {
+            let plan = try RecordingGeometry.regionPlan(
+                for: odd,
+                displays: [display(id: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900), scale: scale)],
+                options: recordingOptions
+            )
+            guard case .region(_, let sourceRect) = plan.source else {
+                Issue.record("expected a region source")
+                return
+            }
+            // ScreenCaptureKit preserves the aspect ratio; a source rect that no longer
+            // matches width x height would come back with black bars.
+            #expect(isClose(sourceRect.width * scale, CGFloat(plan.pixelWidth)))
+            #expect(isClose(sourceRect.height * scale, CGFloat(plan.pixelHeight)))
+        }
+    }
+
+    @Test("A region on no display at all is rejected rather than guessed at")
+    func regionOutsideEveryDisplayFails() {
+        let inTheGap = CGRect(x: 5000, y: 5000, width: 100, height: 100)
+        #expect(throws: RecordingError.self) {
+            try RecordingGeometry.regionPlan(
+                for: inTheGap,
+                displays: twoDisplays,
+                options: recordingOptions
+            )
+        }
+    }
+
+    @Test("A region too small to encode is rejected")
+    func tinyRegionFails() {
+        let sliver = CGRect(x: 10, y: 10, width: 1, height: 40)
+        #expect(throws: RecordingError.self) {
+            try RecordingGeometry.regionPlan(
+                for: sliver,
+                displays: [display(id: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900), scale: 1)],
+                options: recordingOptions
+            )
+        }
+    }
+
+    @Test("A window plan carries the window and never a display")
+    func windowPlanKeepsTheWindow() throws {
+        let plan = try RecordingGeometry.windowPlan(
+            windowID: 4242,
+            contentSize: CGSize(width: 401, height: 301),
+            scale: 2,
+            options: recordingOptions
+        )
+
+        #expect(plan.source == .window(4242))
+        #expect(plan.pixelWidth == 802)
+        #expect(plan.pixelHeight == 602)
+        #expect(plan.trimmedToOneDisplay == false)
+    }
+
+    @Test("Recording options come straight from the store")
+    func recordingOptionsReadTheStore() {
+        let settings = makeSettings()
+        settings.recordsSystemAudio = true
+        settings.recordsMicrophone = false
+        settings.showsCursorInRecording = false
+        settings.showsClicksInRecording = true
+
+        let options = RecordingOptions(settings: settings)
+        #expect(options.capturesSystemAudio)
+        #expect(options.capturesMicrophone == false)
+        #expect(options.showsCursor == false)
+        #expect(options.showsClicks)
+    }
+
+    // MARK: - Recording files
+
+    @Test("A recording is named like a screenshot, with its own prefix")
+    func recordingFileName() throws {
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 1
+        components.day = 2
+        components.hour = 3
+        components.minute = 4
+        components.second = 5
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let date = try #require(calendar.date(from: components))
+
+        let name = ScreenshotNaming.fileName(
+            prefix: ScreenshotNaming.recordingPrefix,
+            extension: RecordingFiles.fileExtension,
+            date: date
+        )
+        #expect(name.hasPrefix("Recording 2026-01-02 at "))
+        #expect(name.hasSuffix(".mp4"))
+    }
+
+    @Test("A finished recording moves into the save folder without overwriting")
+    func recordingMovesIntoSaveFolder() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Skreen2GoTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let destination = root.appendingPathComponent("out", isDirectory: true)
+        let date = Date()
+
+        var written: [URL] = []
+        for index in 0..<2 {
+            let temp = root.appendingPathComponent("temp-\(index).mp4")
+            try Data("clip \(index)".utf8).write(to: temp)
+            let moved = try RecordingFiles.move(temp, into: destination, date: date)
+            written.append(moved)
+            #expect(FileManager.default.fileExists(atPath: temp.path) == false)
+        }
+
+        #expect(written[0] != written[1], "the second recording must not overwrite the first")
+        #expect(try String(contentsOf: written[0], encoding: .utf8) == "clip 0")
+        #expect(try String(contentsOf: written[1], encoding: .utf8) == "clip 1")
+        #expect(written[1].lastPathComponent.contains(" 2."))
+    }
+
+    @Test("Stale recordings from an earlier run are cleared out")
+    func stalePartialRecordingsArePurged() throws {
+        let temp = try RecordingFiles.temporaryURL()
+        try Data("leftover".utf8).write(to: temp)
+        #expect(FileManager.default.fileExists(atPath: temp.path))
+
+        RecordingFiles.purgeStaleRecordings()
+        #expect(FileManager.default.fileExists(atPath: temp.path) == false)
+    }
+
+    // MARK: - Recording settings
+
+    @Test("The recording hot key defaults to a combination without Command")
+    func recordingHotKeyDefault() {
+        let settings = makeSettings()
+        #expect(settings.recordingHotKey == HotKeyCombination.defaultRecording)
+        #expect(settings.recordingHotKey.modifiers.contains(.command) == false)
+        #expect(settings.recordingHotKey != settings.hotKey)
+    }
+
+    @Test("The two hot keys refuse to hold the same combination")
+    func hotKeysCannotCollide() {
+        let settings = makeSettings()
+        let screenshot = settings.hotKey
+
+        settings.recordingHotKey = screenshot
+        #expect(settings.recordingHotKey == HotKeyCombination.defaultRecording)
+
+        settings.hotKey = HotKeyCombination.defaultRecording
+        #expect(settings.hotKey == screenshot)
+
+        // A genuinely free combination is still accepted.
+        let free = HotKeyCombination(keyCode: 17, modifiers: [.control, .option])
+        settings.recordingHotKey = free
+        #expect(settings.recordingHotKey == free)
+    }
+
+    @Test("Recording preferences round-trip and come back to their defaults on reset")
+    func recordingSettingsRoundTrip() {
+        let settings = makeSettings()
+        #expect(settings.recordsSystemAudio == false)
+        #expect(settings.recordsMicrophone == false)
+        #expect(settings.showsCursorInRecording)
+        #expect(settings.showsClicksInRecording)
+
+        settings.recordsSystemAudio = true
+        settings.recordsMicrophone = true
+        settings.showsCursorInRecording = false
+        settings.showsClicksInRecording = false
+        settings.recordingHotKey = HotKeyCombination(keyCode: 17, modifiers: [.control, .option])
+
+        #expect(settings.recordsSystemAudio)
+        #expect(settings.recordsMicrophone)
+        #expect(settings.showsCursorInRecording == false)
+        #expect(settings.showsClicksInRecording == false)
+
+        // Catches a new key that was added to the store but forgotten in `Key.all`.
+        settings.reset()
+        #expect(settings.recordsSystemAudio == false)
+        #expect(settings.recordsMicrophone == false)
+        #expect(settings.showsCursorInRecording)
+        #expect(settings.showsClicksInRecording)
+        #expect(settings.recordingHotKey == HotKeyCombination.defaultRecording)
+    }
 }

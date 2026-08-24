@@ -224,6 +224,10 @@ struct HotKeyCombination: Equatable {
     /// system-wide and swallows the event, so it would otherwise shadow common
     /// shortcuts such as ⌘⇧S ("Save As") in every other application.
     static let `default` = HotKeyCombination(keyCode: 1, modifiers: [.control, .shift])
+
+    /// ⌃⇧R, avoiding ⌘ for the same reason. One key covers the whole recording session:
+    /// it starts a selection, cancels the countdown, and stops a running recording.
+    static let defaultRecording = HotKeyCombination(keyCode: 15, modifiers: [.control, .shift])
 }
 
 enum AppKeyboardShortcut {
@@ -243,33 +247,85 @@ final class SettingsStore {
 
     var hotKey: HotKeyCombination {
         get {
-            let storedKeyCode = (defaults.object(forKey: Key.hotKeyKeyCode) as? NSNumber)?.intValue
-            let storedModifiers = (defaults.object(forKey: Key.hotKeyModifiers) as? NSNumber)?.uintValue
-            let keyCode: UInt16
-            if let storedKeyCode {
-                guard (0...127).contains(storedKeyCode) else {
-                    return HotKeyCombination.default
-                }
-                keyCode = UInt16(storedKeyCode)
-            } else {
-                keyCode = HotKeyCombination.default.keyCode
-            }
-            let modifiers = storedModifiers.map {
-                NSEvent.ModifierFlags(rawValue: $0).intersection(.deviceIndependentFlagsMask)
-            } ?? HotKeyCombination.default.modifiers
-            guard !modifiers.isEmpty else { return HotKeyCombination.default }
-            return HotKeyCombination(keyCode: keyCode, modifiers: modifiers)
+            Self.combination(
+                in: defaults,
+                keyCodeKey: Key.hotKeyKeyCode,
+                modifiersKey: Key.hotKeyModifiers,
+                fallback: .default
+            )
         }
         set {
-            let keyCode = (0...127).contains(Int(newValue.keyCode))
-                ? newValue.keyCode
-                : HotKeyCombination.default.keyCode
-            let modifiers = newValue.modifiers.intersection(.deviceIndependentFlagsMask)
-            let validModifiers = modifiers.isEmpty ? HotKeyCombination.default.modifiers : modifiers
-            defaults.set(Int(keyCode), forKey: Key.hotKeyKeyCode)
-            defaults.set(validModifiers.rawValue, forKey: Key.hotKeyModifiers)
-            notify()
+            // Both hot keys are registered system-wide. If they held the same combination
+            // only one registration would win and the other would be silently dead, so a
+            // clashing assignment is refused rather than stored.
+            guard newValue != recordingHotKey else { return }
+            store(
+                newValue,
+                keyCodeKey: Key.hotKeyKeyCode,
+                modifiersKey: Key.hotKeyModifiers,
+                fallback: .default
+            )
         }
+    }
+
+    /// Starts a recording selection, cancels the countdown, and stops a running
+    /// recording — one combination for the whole session.
+    var recordingHotKey: HotKeyCombination {
+        get {
+            Self.combination(
+                in: defaults,
+                keyCodeKey: Key.recordingHotKeyKeyCode,
+                modifiersKey: Key.recordingHotKeyModifiers,
+                fallback: .defaultRecording
+            )
+        }
+        set {
+            guard newValue != hotKey else { return }
+            store(
+                newValue,
+                keyCodeKey: Key.recordingHotKeyKeyCode,
+                modifiersKey: Key.recordingHotKeyModifiers,
+                fallback: .defaultRecording
+            )
+        }
+    }
+
+    private static func combination(
+        in defaults: UserDefaults,
+        keyCodeKey: String,
+        modifiersKey: String,
+        fallback: HotKeyCombination
+    ) -> HotKeyCombination {
+        let storedKeyCode = (defaults.object(forKey: keyCodeKey) as? NSNumber)?.intValue
+        let storedModifiers = (defaults.object(forKey: modifiersKey) as? NSNumber)?.uintValue
+        let keyCode: UInt16
+        if let storedKeyCode {
+            guard (0...127).contains(storedKeyCode) else { return fallback }
+            keyCode = UInt16(storedKeyCode)
+        } else {
+            keyCode = fallback.keyCode
+        }
+        let modifiers = storedModifiers.map {
+            NSEvent.ModifierFlags(rawValue: $0).intersection(.deviceIndependentFlagsMask)
+        } ?? fallback.modifiers
+        guard !modifiers.isEmpty else { return fallback }
+        return HotKeyCombination(keyCode: keyCode, modifiers: modifiers)
+    }
+
+    private func store(
+        _ combination: HotKeyCombination,
+        keyCodeKey: String,
+        modifiersKey: String,
+        fallback: HotKeyCombination
+    ) {
+        let keyCode = (0...127).contains(Int(combination.keyCode))
+            ? combination.keyCode
+            : fallback.keyCode
+        let modifiers = combination.modifiers.intersection(.deviceIndependentFlagsMask)
+        let validModifiers = modifiers.isEmpty ? fallback.modifiers : modifiers
+        defaults.set(Int(keyCode), forKey: keyCodeKey)
+        defaults.set(validModifiers.rawValue, forKey: modifiersKey)
+        notify()
     }
 
     var outputFormat: OutputFormat {
@@ -408,6 +464,30 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Key.showNotifications); notify() }
     }
 
+    /// Both audio sources default to off: a recording that silently carries the room or
+    /// the user's music is a worse surprise than one that is missing sound.
+    var recordsSystemAudio: Bool {
+        get { defaults.object(forKey: Key.recordsSystemAudio) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Key.recordsSystemAudio); notify() }
+    }
+
+    var recordsMicrophone: Bool {
+        get { defaults.object(forKey: Key.recordsMicrophone) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Key.recordsMicrophone); notify() }
+    }
+
+    /// Unlike a screenshot, where the pointer is noise, a screencast without it leaves the
+    /// viewer guessing where the click landed.
+    var showsCursorInRecording: Bool {
+        get { defaults.object(forKey: Key.showsCursorInRecording) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.showsCursorInRecording); notify() }
+    }
+
+    var showsClicksInRecording: Bool {
+        get { defaults.object(forKey: Key.showsClicksInRecording) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.showsClicksInRecording); notify() }
+    }
+
     var launchAtLogin: Bool {
         get { defaults.object(forKey: Key.launchAtLogin) as? Bool ?? false }
         set { defaults.set(newValue, forKey: Key.launchAtLogin); notify() }
@@ -464,6 +544,12 @@ final class SettingsStore {
     private enum Key {
         static let hotKeyKeyCode = "hotKeyKeyCode"
         static let hotKeyModifiers = "hotKeyModifiers"
+        static let recordingHotKeyKeyCode = "recordingHotKeyKeyCode"
+        static let recordingHotKeyModifiers = "recordingHotKeyModifiers"
+        static let recordsSystemAudio = "recordsSystemAudio"
+        static let recordsMicrophone = "recordsMicrophone"
+        static let showsCursorInRecording = "showsCursorInRecording"
+        static let showsClicksInRecording = "showsClicksInRecording"
         static let outputFormat = "outputFormat"
         static let outputFolderPath = "outputFolderPath"
         static let outputFolderBookmark = "outputFolderBookmark"
@@ -485,7 +571,9 @@ final class SettingsStore {
             hotKeyKeyCode, hotKeyModifiers, outputFormat, outputFolderPath, outputFolderBookmark,
             colorRed, colorGreen, colorBlue, colorAlpha, strokeThickness,
             strokeOpacity, textSize, textOpacity, textBold, blurRadius,
-            showNotifications, launchAtLogin, interfaceLanguage
+            showNotifications, launchAtLogin, interfaceLanguage,
+            recordingHotKeyKeyCode, recordingHotKeyModifiers, recordsSystemAudio,
+            recordsMicrophone, showsCursorInRecording, showsClicksInRecording
         ]
     }
 }
