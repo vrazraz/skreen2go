@@ -160,15 +160,12 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         onClose?()
     }
 
-    /// Two tabs, because the two jobs share almost nothing: a screenshot has colours,
-    /// thickness and text; a recording has none of those. Splitting them roughly halves
-    /// what is on screen at once, and each tab reads top to bottom in the order the
-    /// settings are reached for — how the capture is started, what comes out of it, then
-    /// how it looks.
-    ///
-    /// What genuinely applies to both — where files land, the interface language, and the
-    /// two app-wide switches — stays below the tabs, visible whichever one is open. Filing
-    /// it under either tab would have been a lie about its scope.
+    /// Three tabs, because the jobs share almost nothing: a screenshot has colours,
+    /// thickness and text; a recording has none of those; and where files land, the
+    /// interface language and the two app-wide switches belong to neither in particular.
+    /// Splitting them cuts what is on screen at once to a third, and each tab reads top to
+    /// bottom in the order the settings are reached for — how the capture is started, what
+    /// comes out of it, then how it looks.
     private func buildInterface() {
         guard let contentView = window?.contentView else { return }
 
@@ -184,14 +181,15 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             "Video recording",
             build: buildRecordingSettings
         ))
+        tabView.addTabViewItem(makeTab(
+            "settings.tab.general",
+            "General",
+            build: buildSharedSettings
+        ))
+        // Opens on the settings that apply everywhere.
+        tabView.selectTabViewItem(at: 2)
         // Lowest hugging in the column, so the tabs take the space left over.
         tabView.setContentHuggingPriority(.defaultLow, for: .vertical)
-
-        let shared = NSStackView()
-        shared.orientation = .vertical
-        shared.alignment = .leading
-        shared.spacing = 10
-        buildSharedSettings(in: shared)
 
         let resetButton = NSButton(title: "settings.reset".localized("Reset settings"), target: self, action: #selector(resetSettings))
         resetButton.bezelStyle = .rounded
@@ -202,7 +200,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         buttons.orientation = .horizontal
         buttons.spacing = 8
 
-        let root = NSStackView(views: [tabView, separatorLine(), shared, buttons])
+        let root = NSStackView(views: [tabView, buttons])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 14
@@ -215,7 +213,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             root.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
             tabView.widthAnchor.constraint(equalTo: root.widthAnchor),
-            shared.widthAnchor.constraint(equalTo: root.widthAnchor),
             buttons.widthAnchor.constraint(equalTo: root.widthAnchor)
         ])
 
@@ -285,8 +282,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     }
 
     private func buildSharedSettings(in stack: NSStackView) {
-        stack.addArrangedSubview(sectionTitle("settings.section.general", "General"))
-
         folderField = NSTextField(string: "")
         folderField.isEditable = false
         folderField.lineBreakMode = .byTruncatingMiddle
@@ -326,7 +321,10 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         build(stack)
 
-        let document = NSView()
+        // Flipped on purpose: a document view shorter than the clip view sits at the
+        // bottom in AppKit's usual bottom-left origin, which left the short recording tab
+        // with a band of empty space above it.
+        let document = FlippedView()
         document.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(stack)
 
@@ -369,6 +367,11 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         line.boxType = .separator
         line.translatesAutoresizingMaskIntoConstraints = false
         return line
+    }
+
+    /// Top-left origin, so content that does not fill the scroll view starts at the top.
+    private final class FlippedView: NSView {
+        override var isFlipped: Bool { true }
     }
 
     /// Pulls every control back from the store — needed after a reset and when the panel

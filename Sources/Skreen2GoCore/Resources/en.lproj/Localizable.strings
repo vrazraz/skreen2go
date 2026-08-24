@@ -50,9 +50,9 @@
 
 /* Settings window */
 "settings.window.title" = "Skreen2Go Settings";
-"settings.section.general" = "General";
 "settings.tab.screenshots" = "Screenshots";
 "settings.tab.recording" = "Video recording";
+"settings.tab.general" = "General";
 "settings.section.pointer" = "Pointer";
 "settings.hotKey" = "Hot key";
 "settings.hotKey.recording" = "Press a combination… (Esc to cancel)";

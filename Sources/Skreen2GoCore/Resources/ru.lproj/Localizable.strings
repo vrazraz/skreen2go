@@ -50,9 +50,9 @@
 
 /* Settings window */
 "settings.window.title" = "Настройки Skreen2Go";
-"settings.section.general" = "Общие настройки";
 "settings.tab.screenshots" = "Скриншоты";
 "settings.tab.recording" = "Запись видео";
+"settings.tab.general" = "Общие";
 "settings.section.pointer" = "Курсор";
 "settings.hotKey" = "Горячая клавиша";
 "settings.hotKey.recording" = "Нажмите комбинацию… (Esc — отмена)";
