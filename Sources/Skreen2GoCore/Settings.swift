@@ -160,60 +160,75 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         onClose?()
     }
 
+    /// Two tabs, because the two jobs share almost nothing: a screenshot has colours,
+    /// thickness and text; a recording has none of those. Splitting them roughly halves
+    /// what is on screen at once, and each tab reads top to bottom in the order the
+    /// settings are reached for — how the capture is started, what comes out of it, then
+    /// how it looks.
+    ///
+    /// What genuinely applies to both — where files land, the interface language, and the
+    /// two app-wide switches — stays below the tabs, visible whichever one is open. Filing
+    /// it under either tab would have been a lie about its scope.
     private func buildInterface() {
         guard let contentView = window?.contentView else { return }
-        let scrollView = NSScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
-        scrollView.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(scrollView)
+
+        let tabView = NSTabView()
+        tabView.translatesAutoresizingMaskIntoConstraints = false
+        tabView.addTabViewItem(makeTab(
+            "settings.tab.screenshots",
+            "Screenshots",
+            build: buildScreenshotSettings
+        ))
+        tabView.addTabViewItem(makeTab(
+            "settings.tab.recording",
+            "Video recording",
+            build: buildRecordingSettings
+        ))
+        // Lowest hugging in the column, so the tabs take the space left over.
+        tabView.setContentHuggingPriority(.defaultLow, for: .vertical)
+
+        let shared = NSStackView()
+        shared.orientation = .vertical
+        shared.alignment = .leading
+        shared.spacing = 10
+        buildSharedSettings(in: shared)
+
+        let resetButton = NSButton(title: "settings.reset".localized("Reset settings"), target: self, action: #selector(resetSettings))
+        resetButton.bezelStyle = .rounded
+        let closeButton = NSButton(title: "settings.done".localized("Done"), target: self, action: #selector(closeSettings))
+        closeButton.bezelStyle = .rounded
+        closeButton.keyEquivalent = "\r"
+        let buttons = NSStackView(views: [NSView(), resetButton, closeButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
+
+        let root = NSStackView(views: [tabView, separatorLine(), shared, buttons])
+        root.orientation = .vertical
+        root.alignment = .leading
+        root.spacing = 14
+        root.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(root)
+
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            root.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            root.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            root.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
+            tabView.widthAnchor.constraint(equalTo: root.widthAnchor),
+            shared.widthAnchor.constraint(equalTo: root.widthAnchor),
+            buttons.widthAnchor.constraint(equalTo: root.widthAnchor)
         ])
 
-        let documentView = NSView()
-        documentView.translatesAutoresizingMaskIntoConstraints = false
-        scrollView.documentView = documentView
+        refreshControls()
+    }
 
-        let stack = NSStackView()
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        documentView.addSubview(stack)
-
-        NSLayoutConstraint.activate([
-            documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: documentView.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 24),
-            // Lets the document view size itself to the content instead of a hard-coded 900pt.
-            stack.bottomAnchor.constraint(equalTo: documentView.bottomAnchor, constant: -24)
-        ])
-
-        let title = NSTextField(labelWithString: "settings.section.general".localized("General"))
-        title.font = .boldSystemFont(ofSize: 18)
-        stack.addArrangedSubview(title)
-
+    /// Reached for in this order: the key that starts a capture, the file it produces,
+    /// then the tools used on it — most often first, rarest last.
+    private func buildScreenshotSettings(in stack: NSStackView) {
         hotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording(_:)))
         hotKeyButton.bezelStyle = .rounded
         hotKeyButton.widthAnchor.constraint(equalToConstant: 200).isActive = true
         stack.addArrangedSubview(row(label: "settings.hotKey".localized("Hot key"), control: hotKeyButton))
-
-        folderField = NSTextField(string: "")
-        folderField.isEditable = false
-        folderField.lineBreakMode = .byTruncatingMiddle
-        folderField.widthAnchor.constraint(equalToConstant: 260).isActive = true
-        let folderButton = NSButton(title: "settings.folder.choose".localized("Choose…"), target: self, action: #selector(chooseFolder))
-        folderButton.bezelStyle = .rounded
-        let folderRow = NSStackView(views: [folderField, folderButton])
-        folderRow.orientation = .horizontal
-        folderRow.spacing = 8
-        stack.addArrangedSubview(row(label: "settings.folder".localized("Save folder"), control: folderRow))
 
         formatPopup = NSPopUpButton(frame: .zero, pullsDown: false)
         formatPopup.addItems(withTitles: OutputFormat.allCases.map(\.rawValue))
@@ -221,32 +236,18 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         formatPopup.action = #selector(formatChanged(_:))
         stack.addArrangedSubview(row(label: "settings.format".localized("File format"), control: formatPopup))
 
-        languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        for language in InterfaceLanguage.allCases {
-            languagePopup.addItem(withTitle: language.title)
-            languagePopup.lastItem?.representedObject = language.rawValue
-        }
-        languagePopup.target = self
-        languagePopup.action = #selector(languageChanged(_:))
-        stack.addArrangedSubview(row(label: "settings.language".localized("Language"), control: languagePopup))
-
         colorWell = NSColorWell(frame: .zero)
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
         stack.addArrangedSubview(row(label: "settings.color".localized("Default color"), control: colorWell))
 
-
-        let strokeTitle = NSTextField(labelWithString: "settings.section.stroke".localized("Arrow and rectangle"))
-        strokeTitle.font = .boldSystemFont(ofSize: 14)
-        stack.addArrangedSubview(strokeTitle)
+        stack.addArrangedSubview(sectionTitle("settings.section.stroke", "Arrow and rectangle"))
         strokeThicknessSlider = slider(min: 1, max: 16, action: #selector(strokeThicknessChanged(_:)))
         stack.addArrangedSubview(row(label: "settings.thickness".localized("Thickness"), control: strokeThicknessSlider))
         strokeOpacitySlider = slider(min: 0.1, max: 1, action: #selector(strokeOpacityChanged(_:)))
         stack.addArrangedSubview(row(label: "settings.opacity".localized("Opacity"), control: strokeOpacitySlider))
 
-        let textTitle = NSTextField(labelWithString: "settings.section.text".localized("Text"))
-        textTitle.font = .boldSystemFont(ofSize: 14)
-        stack.addArrangedSubview(textTitle)
+        stack.addArrangedSubview(sectionTitle("settings.section.text", "Text"))
         textSizeSlider = slider(min: 10, max: 72, action: #selector(textSizeChanged(_:)))
         stack.addArrangedSubview(row(label: "settings.textSize".localized("Size"), control: textSizeSlider))
         textOpacitySlider = slider(min: 0.1, max: 1, action: #selector(textOpacityChanged(_:)))
@@ -254,21 +255,20 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         boldCheckbox = NSButton(checkboxWithTitle: "settings.textBold".localized("Bold text"), target: self, action: #selector(textBoldChanged(_:)))
         stack.addArrangedSubview(boldCheckbox)
 
-        let blurTitle = NSTextField(labelWithString: "settings.section.blur".localized("Blur"))
-        blurTitle.font = .boldSystemFont(ofSize: 14)
-        stack.addArrangedSubview(blurTitle)
+        stack.addArrangedSubview(sectionTitle("settings.section.blur", "Blur"))
         blurSlider = slider(min: 1, max: 40, action: #selector(blurChanged(_:)))
         stack.addArrangedSubview(row(label: "settings.blurRadius".localized("Intensity"), control: blurSlider))
+    }
 
-        let recordingTitle = NSTextField(labelWithString: "settings.section.recording".localized("Video recording"))
-        recordingTitle.font = .boldSystemFont(ofSize: 14)
-        stack.addArrangedSubview(recordingTitle)
-
+    /// Short by design: the audio sources are chosen on the panel, right before recording,
+    /// because that is a decision made afresh every time rather than once and forgotten.
+    private func buildRecordingSettings(in stack: NSStackView) {
         recordingHotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording(_:)))
         recordingHotKeyButton.bezelStyle = .rounded
         recordingHotKeyButton.widthAnchor.constraint(equalToConstant: 200).isActive = true
         stack.addArrangedSubview(row(label: "settings.recordingHotKey".localized("Recording hot key"), control: recordingHotKeyButton))
 
+        stack.addArrangedSubview(sectionTitle("settings.section.pointer", "Pointer"))
         recordingCursorCheckbox = NSButton(
             checkboxWithTitle: "settings.recordingCursor".localized("Show the mouse cursor"),
             target: self,
@@ -282,23 +282,93 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             action: #selector(recordingClicksChanged(_:))
         )
         stack.addArrangedSubview(recordingClicksCheckbox)
+    }
+
+    private func buildSharedSettings(in stack: NSStackView) {
+        stack.addArrangedSubview(sectionTitle("settings.section.general", "General"))
+
+        folderField = NSTextField(string: "")
+        folderField.isEditable = false
+        folderField.lineBreakMode = .byTruncatingMiddle
+        folderField.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        let folderButton = NSButton(title: "settings.folder.choose".localized("Choose…"), target: self, action: #selector(chooseFolder))
+        folderButton.bezelStyle = .rounded
+        let folderRow = NSStackView(views: [folderField, folderButton])
+        folderRow.orientation = .horizontal
+        folderRow.spacing = 8
+        stack.addArrangedSubview(row(label: "settings.folder".localized("Save folder"), control: folderRow))
+
+        languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        for language in InterfaceLanguage.allCases {
+            languagePopup.addItem(withTitle: language.title)
+            languagePopup.lastItem?.representedObject = language.rawValue
+        }
+        languagePopup.target = self
+        languagePopup.action = #selector(languageChanged(_:))
+        stack.addArrangedSubview(row(label: "settings.language".localized("Language"), control: languagePopup))
 
         launchCheckbox = NSButton(checkboxWithTitle: "settings.launchAtLogin".localized("Launch at login"), target: self, action: #selector(launchAtLoginChanged(_:)))
         stack.addArrangedSubview(launchCheckbox)
 
         notificationCheckbox = NSButton(checkboxWithTitle: "settings.showNotifications".localized("Show notifications"), target: self, action: #selector(notificationsChanged(_:)))
         stack.addArrangedSubview(notificationCheckbox)
+    }
 
-        let resetButton = NSButton(title: "settings.reset".localized("Reset settings"), target: self, action: #selector(resetSettings))
-        resetButton.bezelStyle = .rounded
-        let closeButton = NSButton(title: "settings.done".localized("Done"), target: self, action: #selector(closeSettings))
-        closeButton.bezelStyle = .rounded
-        let buttons = NSStackView(views: [resetButton, closeButton])
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
-        stack.addArrangedSubview(buttons)
+    private func makeTab(
+        _ key: String,
+        _ fallback: String,
+        build: (NSStackView) -> Void
+    ) -> NSTabViewItem {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        build(stack)
 
-        refreshControls()
+        let document = NSView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        document.addSubview(stack)
+
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = document
+
+        let container = NSView()
+        container.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: container.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: document.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 16),
+            // Lets the document size itself to its content rather than a fixed height.
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -16)
+        ])
+
+        let item = NSTabViewItem(identifier: key)
+        item.label = key.localized(fallback)
+        item.view = container
+        return item
+    }
+
+    private func sectionTitle(_ key: String, _ fallback: String) -> NSTextField {
+        let title = NSTextField(labelWithString: key.localized(fallback))
+        title.font = .boldSystemFont(ofSize: 13)
+        return title
+    }
+
+    private func separatorLine() -> NSView {
+        let line = NSBox()
+        line.boxType = .separator
+        line.translatesAutoresizingMaskIntoConstraints = false
+        return line
     }
 
     /// Pulls every control back from the store — needed after a reset and when the panel

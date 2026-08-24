@@ -51,6 +51,9 @@
 /* Settings window */
 "settings.window.title" = "Skreen2Go Settings";
 "settings.section.general" = "General";
+"settings.tab.screenshots" = "Screenshots";
+"settings.tab.recording" = "Video recording";
+"settings.section.pointer" = "Pointer";
 "settings.hotKey" = "Hot key";
 "settings.hotKey.recording" = "Press a combination… (Esc to cancel)";
 "settings.folder" = "Save folder";
@@ -69,7 +72,6 @@
 "settings.blurRadius" = "Intensity";
 "settings.launchAtLogin" = "Launch at login";
 "settings.showNotifications" = "Show notifications";
-"settings.section.recording" = "Video recording";
 "settings.recordingHotKey" = "Recording hot key";
 "settings.recordingCursor" = "Show the mouse cursor";
 "settings.recordingClicks" = "Highlight clicks";

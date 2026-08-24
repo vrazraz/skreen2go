@@ -51,6 +51,9 @@
 /* Settings window */
 "settings.window.title" = "Настройки Skreen2Go";
 "settings.section.general" = "Общие настройки";
+"settings.tab.screenshots" = "Скриншоты";
+"settings.tab.recording" = "Запись видео";
+"settings.section.pointer" = "Курсор";
 "settings.hotKey" = "Горячая клавиша";
 "settings.hotKey.recording" = "Нажмите комбинацию… (Esc — отмена)";
 "settings.folder" = "Папка сохранения";
@@ -69,7 +72,6 @@
 "settings.blurRadius" = "Интенсивность";
 "settings.launchAtLogin" = "Запускать вместе с macOS";
 "settings.showNotifications" = "Показывать уведомления";
-"settings.section.recording" = "Запись видео";
 "settings.recordingHotKey" = "Горячая клавиша записи";
 "settings.recordingCursor" = "Показывать курсор мыши";
 "settings.recordingClicks" = "Подсвечивать клики";
