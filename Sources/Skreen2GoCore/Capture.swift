@@ -97,15 +97,7 @@ final class ColorPaletteView: NSView {
         super.init(frame: .zero)
 
         appearance = NSAppearance(named: .aqua)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.97, alpha: 0.98).cgColor
-        layer?.cornerRadius = 8
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(white: 0.55, alpha: 0.9).cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.4
-        layer?.shadowOffset = CGSize(width: 0, height: -2)
-        layer?.shadowRadius = 6
+        PanelStyle.apply(to: self, cornerRadius: 8)
 
         let rows = stride(from: 0, to: Self.colors.count, by: Self.columns).map { start in
             let slice = Self.colors[start..<min(start + Self.columns, Self.colors.count)]
@@ -189,6 +181,29 @@ final class ColorPaletteView: NSView {
 
 /// The panel that appears as soon as a selection exists (PRD §5). Icon-only: drawing
 /// tools on the left, then colour, undo/redo, and the terminal actions.
+/// The look shared by the floating panels over the dimmed screen.
+enum PanelStyle {
+    /// Translucent rather than solid, so the panel reads as floating above the shot
+    /// rather than as part of it. No border: the shadow already separates it from the
+    /// backdrop, and an outline on a translucent fill only muddies the edge.
+    static let fill = NSColor(white: 0.97, alpha: 0.72)
+    /// Nearly black, not the system default grey, so glyphs hold up against a fill you
+    /// can see through.
+    static let icon = NSColor(white: 0.12, alpha: 1)
+    static let cornerRadius: CGFloat = 10
+
+    static func apply(to view: NSView, cornerRadius: CGFloat = PanelStyle.cornerRadius) {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = fill.cgColor
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.borderWidth = 0
+        view.layer?.shadowColor = NSColor.black.cgColor
+        view.layer?.shadowOpacity = 0.4
+        view.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        view.layer?.shadowRadius = 6
+    }
+}
+
 /// A button that draws a circle of a stated size, whatever frame AppKit gives it.
 ///
 /// Rounding the button's own layer does not work here: `NSButton` sizes itself from its
@@ -252,6 +267,9 @@ final class SelectionActionBar: NSView {
     private var primaryButtons: [NSButton] = []
 
     private static let primarySide: CGFloat = 40
+    /// Extra air around the divider before the primary buttons, so the group that
+    /// finishes the job stands apart from the tools that lead up to it.
+    private static let primaryGap: CGFloat = 12
 
     init(
         color: NSColor,
@@ -277,15 +295,7 @@ final class SelectionActionBar: NSView {
         // materials sample the (dark) desktop behind the window and came out mid-grey,
         // leaving the glyphs barely legible.
         appearance = NSAppearance(named: .aqua)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(white: 0.97, alpha: 0.98).cgColor
-        layer?.cornerRadius = 10
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor(white: 0.55, alpha: 0.9).cgColor
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.4
-        layer?.shadowOffset = CGSize(width: 0, height: -2)
-        layer?.shadowRadius = 6
+        PanelStyle.apply(to: self)
 
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -335,9 +345,9 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(button("arrow.uturn.forward", "tool.redo".localized("Redo (⇧⌘Z)"), #selector(redo)))
         stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
 
-        stack.addArrangedSubview(separator())
         // What a screenshot is actually for, gathered at the far end of the panel and
         // round, so the panel reads as tools first and outcomes last.
+        _ = primaryGroupSeparator(in: stack)
         stack.addArrangedSubview(primaryButton(
             "doc.on.doc",
             "tool.copy".localized("Copy"),
@@ -388,7 +398,7 @@ final class SelectionActionBar: NSView {
         microphoneButton = microphone
         stack.addArrangedSubview(microphone)
 
-        stack.addArrangedSubview(separator())
+        _ = primaryGroupSeparator(in: stack)
         stack.addArrangedSubview(primaryButton(
             nil,
             "tool.record".localized("Record video"),
@@ -443,6 +453,7 @@ final class SelectionActionBar: NSView {
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
         button.bezelStyle = .texturedRounded
+        button.contentTintColor = PanelStyle.icon
         button.setAccessibilityTitle(title)
         hintTitles[ObjectIdentifier(button)] = title
         button.setContentHuggingPriority(.required, for: .horizontal)
@@ -502,7 +513,7 @@ final class SelectionActionBar: NSView {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.contentTintColor = fill == nil ? .black : .white
+            button.contentTintColor = fill == nil ? PanelStyle.icon : .white
         }
 
         button.setAccessibilityTitle(title)
@@ -512,6 +523,16 @@ final class SelectionActionBar: NSView {
         button.heightAnchor.constraint(equalToConstant: Self.primarySide).isActive = true
         primaryButtons.append(button)
         return button
+    }
+
+    /// A divider with room either side of it.
+    private func primaryGroupSeparator(in stack: NSStackView) -> NSView {
+        let previous = stack.arrangedSubviews.last
+        let line = separator()
+        stack.addArrangedSubview(line)
+        if let previous { stack.setCustomSpacing(Self.primaryGap, after: previous) }
+        stack.setCustomSpacing(Self.primaryGap, after: line)
+        return line
     }
 
     private func separator() -> NSView {
