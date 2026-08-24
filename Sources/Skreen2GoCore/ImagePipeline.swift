@@ -100,6 +100,9 @@ enum ScreenshotNaming {
 }
 
 enum AnnotationRenderer {
+    /// Where the shaft ends up: a hairline, whatever thickness it started at.
+    static let arrowTipWidth: CGFloat = 1
+
     static func draw(
         image: NSImage,
         annotations: [Annotation],
@@ -181,17 +184,47 @@ enum AnnotationRenderer {
 
     private static func drawArrow(_ annotation: Annotation) {
         let color = annotation.color.withAlphaComponent(annotation.opacity)
-        color.setStroke()
         color.setFill()
 
-        let path = NSBezierPath()
-        path.move(to: annotation.start)
-        path.line(to: annotation.end)
-        path.lineWidth = annotation.thickness
-        path.lineCapStyle = .round
-        path.stroke()
-
         let angle = atan2(annotation.end.y - annotation.start.y, annotation.end.x - annotation.start.x)
+
+        // The shaft narrows along its length: the chosen thickness where the stroke
+        // begins, a hairline where it lands, the way a brush lifts off the page. A stroked
+        // line cannot do this — it has one width — so the shaft is a filled quadrilateral
+        // between the two half-widths.
+        let startHalf = max(annotation.thickness, Self.arrowTipWidth) / 2
+        let endHalf = Self.arrowTipWidth / 2
+        let acrossX = -sin(angle)
+        let acrossY = cos(angle)
+
+        let shaft = NSBezierPath()
+        shaft.move(to: CGPoint(
+            x: annotation.start.x + acrossX * startHalf,
+            y: annotation.start.y + acrossY * startHalf
+        ))
+        shaft.line(to: CGPoint(
+            x: annotation.end.x + acrossX * endHalf,
+            y: annotation.end.y + acrossY * endHalf
+        ))
+        shaft.line(to: CGPoint(
+            x: annotation.end.x - acrossX * endHalf,
+            y: annotation.end.y - acrossY * endHalf
+        ))
+        shaft.line(to: CGPoint(
+            x: annotation.start.x - acrossX * startHalf,
+            y: annotation.start.y - acrossY * startHalf
+        ))
+        shaft.close()
+        shaft.fill()
+
+        // Rounds off the wide end, which the round line cap used to do.
+        NSBezierPath(ovalIn: CGRect(
+            x: annotation.start.x - startHalf,
+            y: annotation.start.y - startHalf,
+            width: startHalf * 2,
+            height: startHalf * 2
+        )).fill()
+
         let headLength = max(10, annotation.thickness * 4)
         let headWidth = max(5, annotation.thickness * 2.5)
         let left = CGPoint(

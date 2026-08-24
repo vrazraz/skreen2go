@@ -2098,6 +2098,51 @@ struct RegressionTests {
         #expect(settings.hotKey == HotKeyCombination.default)
     }
 
+    @Test("An arrow's shaft narrows from its full thickness to a hairline")
+    func arrowShaftTapers() throws {
+        let size = CGSize(width: 400, height: 200)
+        let image = makeImage(from: makeCGImage(pixelWidth: 400, pixelHeight: 200), pointSize: size)
+        let document = ScreenshotDocument(image: image)
+        let settings = makeSettings()
+
+        let thickness: CGFloat = 12
+        document.annotations = [
+            Annotation(
+                kind: .arrow,
+                start: CGPoint(x: 40, y: 100),
+                end: CGPoint(x: 360, y: 100),
+                color: .black,
+                thickness: thickness,
+                opacity: 1
+            )
+        ]
+
+        let png = try #require(ImageExporter.data(for: document, format: .png, settings: settings))
+        let rep = try #require(NSBitmapImageRep(data: png))
+
+        /// How tall the drawn arrow is in one column of pixels.
+        func shaftHeight(atX x: Int) -> Int {
+            var count = 0
+            for y in 0..<rep.pixelsHigh {
+                guard let pixel = rep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                // The backdrop is a bright blue; the arrow is black.
+                if pixel.brightnessComponent < 0.35 { count += 1 }
+            }
+            return count
+        }
+
+        // The head begins about 48pt back from the tip, so both samples are shaft.
+        let nearStart = shaftHeight(atX: 60)
+        let nearEnd = shaftHeight(atX: 280)
+
+        #expect(nearStart > 0, "no arrow was drawn")
+        // Close to the chosen thickness where the stroke begins...
+        #expect(abs(nearStart - Int(thickness)) <= 2, "shaft starts at \(nearStart)pt, wanted \(Int(thickness))")
+        // ...and markedly thinner by the far end.
+        #expect(nearEnd < nearStart / 2, "shaft is \(nearEnd)pt near the end, \(nearStart)pt near the start")
+        #expect(nearEnd >= 1, "the shaft must not vanish before the head")
+    }
+
     // MARK: - Export smoke test across every annotation kind
 
     @Test("Every annotation kind renders into both output formats")

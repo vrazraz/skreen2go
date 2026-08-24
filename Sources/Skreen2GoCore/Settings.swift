@@ -172,6 +172,11 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         let tabView = NSTabView()
         tabView.translatesAutoresizingMaskIntoConstraints = false
         tabView.addTabViewItem(makeTab(
+            "settings.tab.general",
+            "General",
+            build: buildSharedSettings
+        ))
+        tabView.addTabViewItem(makeTab(
             "settings.tab.screenshots",
             "Screenshots",
             build: buildScreenshotSettings
@@ -181,13 +186,9 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
             "Video recording",
             build: buildRecordingSettings
         ))
-        tabView.addTabViewItem(makeTab(
-            "settings.tab.general",
-            "General",
-            build: buildSharedSettings
-        ))
-        // Opens on the settings that apply everywhere.
-        tabView.selectTabViewItem(at: 2)
+        // Opens on the settings that apply everywhere, which is also where they read
+        // first: they hold for both of the tabs after them.
+        tabView.selectTabViewItem(at: 0)
         // Lowest hugging in the column, so the tabs take the space left over.
         tabView.setContentHuggingPriority(.defaultLow, for: .vertical)
 
