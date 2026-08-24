@@ -650,6 +650,9 @@ extension SelectionActionBar {
     var testBackgroundFrame: CGRect? {
         subviews.compactMap { $0 as? PanelBackgroundView }.first?.frame
     }
+    var testBackgroundView: PanelBackgroundView? {
+        subviews.compactMap { $0 as? PanelBackgroundView }.first
+    }
     static var testPrimarySide: CGFloat { primarySide }
 }
 
@@ -1583,6 +1586,7 @@ final class CaptureOverlayView: NSView {
     var testButtonFillAlphas: [CGFloat] { actionBar?.testButtonFillAlphas ?? [] }
     var testPanelFillAlpha: CGFloat { actionBar?.testPanelFillAlpha ?? 1 }
     var testPanelBackgroundFrame: CGRect? { actionBar?.testBackgroundFrame }
+    var testPanelBackgroundView: PanelBackgroundView? { actionBar?.testBackgroundView }
     var testTool: OverlayTool { tool }
     var testActiveHint: String? { activeHint?.text }
     var testColorPaletteFrame: CGRect? { colorPalette?.frame }

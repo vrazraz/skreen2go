@@ -1256,6 +1256,26 @@ struct RegressionTests {
         }
     }
 
+    @Test("The glow is really blurred, not just faded")
+    func glowCarriesARealBlur() throws {
+        let settings = makeSettings()
+        settings.panelBackground = .glow
+        let overlay = CaptureOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            settings: settings,
+            mode: .screenshot
+        )
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        let background = try #require(overlay.testPanelBackgroundView)
+        // AppKit ignores CALayer.filters unless the view opts in, and does so silently.
+        #expect(background.testUsesCoreImageFilters)
+        let radius = try #require(background.testGlowBlurRadius, "the glow carries no blur")
+        #expect(radius > 0)
+    }
+
     @Test("The panel background style round-trips and resets")
     func panelBackgroundSettingRoundTrips() {
         let settings = makeSettings()

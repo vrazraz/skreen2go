@@ -51,6 +51,9 @@ final class PanelBackgroundView: NSView {
         super.init(frame: .zero)
 
         wantsLayer = true
+        // Without this AppKit silently ignores `CALayer.filters`, and the glow would
+        // simply never be blurred.
+        layerUsesCoreImageFilters = true
         layer?.masksToBounds = true
         build()
     }
@@ -85,18 +88,31 @@ final class PanelBackgroundView: NSView {
     }
 
     /// A rotating gradient shown twice: once as a rim just outside the panel, once
-    /// larger and softened underneath as its glow. Both turn together.
+    /// scaled down, dropped and genuinely blurred underneath as its glow. Both turn
+    /// together.
     ///
-    /// The original does the soft copy with `filter: blur()`. That is skipped here, and
-    /// deliberately: a linear gradient is already smooth, so blurring one only softens the
-    /// edges of its rectangle — which a feathered mask does for nothing, where a blur
-    /// filter would be recomputed on every frame of the rotation.
+    /// The blur is a real `CIGaussianBlur`, as in the original, and it is the one thing in
+    /// this file that costs something per frame: the gradient's content changes as it
+    /// turns, so the filter runs again. It is bounded by the size of the layer it runs
+    /// on — a few hundred points across — rather than by anything on screen.
     private func buildGlow() {
         layer?.masksToBounds = false
 
-        glowLayer = Self.spinningGradient()
+        // The blurred copy lives inside a larger container so the blur has somewhere to
+        // spread. A gradient layer fills its own bounds edge to edge, so blurring one
+        // directly would have nothing but its own colour to bleed into.
+        let container = CALayer()
+        container.masksToBounds = false
+        let gradient = Self.spinningGradient()
+        container.addSublayer(gradient)
+        if let blur = CIFilter(name: "CIGaussianBlur") {
+            container.filters = [blur]
+        }
+        layer?.addSublayer(container)
+        glowContainer = container
+        glowLayer = gradient
+
         rimLayer = Self.spinningGradient()
-        if let glowLayer { layer?.addSublayer(glowLayer) }
         if let rimLayer { layer?.addSublayer(rimLayer) }
 
         // The fill sits on top of the rim, so only the rim's outer margin shows.
@@ -230,6 +246,15 @@ final class PanelBackgroundView: NSView {
     private var styleLayers: [CALayer] = []
     private var rimLayer: CAGradientLayer?
     private var glowLayer: CAGradientLayer?
+    private var glowContainer: CALayer?
+
+    /// For tests: the blur actually attached to the glow, and its radius.
+    var testGlowBlurRadius: CGFloat? {
+        guard let filter = glowContainer?.filters?.first as? CIFilter,
+              filter.name == "CIGaussianBlur" else { return nil }
+        return filter.value(forKey: kCIInputRadiusKey) as? CGFloat
+    }
+    var testUsesCoreImageFilters: Bool { layerUsesCoreImageFilters }
     private var blobDrifts: [CABasicAnimation] = []
     private var plasmaDirections: [CGFloat] = []
 
@@ -246,24 +271,27 @@ final class PanelBackgroundView: NSView {
             rimLayer?.frame = bounds.insetBy(dx: -rimWidth, dy: -rimWidth)
             rimLayer?.cornerRadius = cornerRadius + rimWidth
 
-            // Larger, dropped a little, and faded at its edges — the soft copy from the
-            // original, without a filter running behind it.
-            let spread = max(bounds.height * 0.55, 18)
-            let glowFrame = bounds
-                .insetBy(dx: -spread, dy: -spread)
-                .offsetBy(dx: 0, dy: -spread * 0.35)
-            glowLayer?.frame = glowFrame
-            glowLayer?.opacity = 0.55
-            if let mask = Self.featherImage(
-                size: glowFrame.size,
-                cornerRadius: cornerRadius + spread,
-                feather: spread
-            ) {
-                let maskLayer = CALayer()
-                maskLayer.frame = CGRect(origin: .zero, size: glowFrame.size)
-                maskLayer.contents = mask.cgImage(forProposedRect: nil, context: nil, hints: nil)
-                glowLayer?.mask = maskLayer
-            }
+            // Scaled down and dropped, exactly as the original places its blurred copy,
+            // then blurred by roughly the panel's own height so it reads as a halo rather
+            // than a second rectangle.
+            let radius = max(bounds.height * 0.75, 20)
+            let padding = radius * 3
+            let container = bounds.insetBy(dx: -padding, dy: -padding)
+            glowContainer?.frame = container
+            glowContainer?.opacity = 0.75
+            (glowContainer?.filters?.first as? CIFilter)?
+                .setValue(radius, forKey: kCIInputRadiusKey)
+
+            let inner = bounds
+                .insetBy(dx: bounds.width * 0.1, dy: bounds.height * 0.1)
+                .offsetBy(dx: 0, dy: -bounds.height / 6)
+            glowLayer?.frame = CGRect(
+                x: inner.minX - container.minX,
+                y: inner.minY - container.minY,
+                width: inner.width,
+                height: inner.height
+            )
+            glowLayer?.cornerRadius = cornerRadius
 
         case .smoke:
             for (index, emitter) in styleLayers.compactMap({ $0 as? CAEmitterLayer }).enumerated() {
