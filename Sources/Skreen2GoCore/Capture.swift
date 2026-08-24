@@ -190,6 +190,10 @@ enum PanelStyle {
     /// Nearly black, not the system default grey, so glyphs hold up against a fill you
     /// can see through.
     static let icon = NSColor(white: 0.12, alpha: 1)
+    /// Buttons stay opaque even though the panel behind them does not: a control you are
+    /// about to press should read as solid, not as a tint of the desktop.
+    static let buttonFill = NSColor(white: 0.93, alpha: 1)
+    static let buttonSelectedFill = NSColor.controlAccentColor
     static let cornerRadius: CGFloat = 10
 
     static func apply(to view: NSView, cornerRadius: CGFloat = PanelStyle.cornerRadius) {
@@ -212,16 +216,31 @@ enum PanelStyle {
 /// frame that is not square is a superellipse, not a circle. The shape is therefore drawn
 /// in a sublayer that is always square and always centred.
 private final class CircularButton: NSButton {
-    var side: CGFloat = 40 { didSet { needsLayout = true } }
-    var fill: NSColor = NSColor(white: 0.88, alpha: 1) { didSet { needsLayout = true } }
+    /// The shape drawn, independent of whatever frame AppKit hands the button.
+    var shapeSize = NSSize(width: 40, height: 40) { didSet { needsLayout = true } }
+    var shapeCornerRadius: CGFloat = 20 { didSet { needsLayout = true } }
+    var fill: NSColor = PanelStyle.buttonFill { didSet { needsLayout = true } }
+    /// Used while the button is on. Nil leaves the fill alone, for buttons with no state.
+    var selectedFill: NSColor?
+    var glyph: NSColor = PanelStyle.icon { didSet { needsLayout = true } }
+    var selectedGlyph: NSColor = .white
 
     private let shape = CALayer()
 
-    override var intrinsicContentSize: NSSize { NSSize(width: side, height: side) }
+    override var intrinsicContentSize: NSSize { shapeSize }
 
-    /// The circle as actually drawn.
+    /// The shape as actually drawn.
     var circle: CGRect { shape.frame }
+    var drawnFillAlpha: CGFloat { shape.backgroundColor?.alpha ?? 0 }
     var circleCornerRadius: CGFloat { shape.cornerRadius }
+
+    override var state: NSControl.StateValue {
+        get { super.state }
+        set {
+            super.state = newValue
+            needsLayout = true
+        }
+    }
 
     override func layout() {
         super.layout()
@@ -230,16 +249,19 @@ private final class CircularButton: NSButton {
             layer?.insertSublayer(shape, at: 0)
         }
         shape.frame = CGRect(
-            x: ((bounds.width - side) / 2).rounded(),
-            y: ((bounds.height - side) / 2).rounded(),
-            width: side,
-            height: side
+            x: ((bounds.width - shapeSize.width) / 2).rounded(),
+            y: ((bounds.height - shapeSize.height) / 2).rounded(),
+            width: shapeSize.width,
+            height: shapeSize.height
         )
-        shape.cornerRadius = side / 2
+        shape.cornerRadius = shapeCornerRadius
         shape.cornerCurve = .circular
-        shape.backgroundColor = fill.cgColor
+
+        let isSelected = state == .on && selectedFill != nil
+        shape.backgroundColor = (isSelected ? selectedFill! : fill).cgColor
         shape.borderWidth = 1
         shape.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
+        contentTintColor = isSelected ? selectedGlyph : glyph
     }
 }
 
@@ -265,8 +287,10 @@ final class SelectionActionBar: NSView {
     /// Which glyph each audio toggle wears in either state.
     private var audioSymbols: [ObjectIdentifier: (on: String, off: String)] = [:]
     private var primaryButtons: [NSButton] = []
+    private var allButtons: [CircularButton] = []
 
     private static let primarySide: CGFloat = 40
+    private static let secondarySize = NSSize(width: 30, height: 28)
     /// Extra air around the divider before the primary buttons, so the group that
     /// finishes the job stands apart from the tools that lead up to it.
     private static let primaryGap: CGFloat = 12
@@ -449,22 +473,30 @@ final class SelectionActionBar: NSView {
     /// Icon-only: the name lives in the tooltip so the bar stays compact.
     private func button(_ symbol: String, _ title: String, _ action: Selector) -> NSButton {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        let button = NSButton(image: image ?? NSImage(), target: self, action: action)
+        let button = CircularButton(image: image ?? NSImage(), target: self, action: action)
+        button.shapeSize = Self.secondarySize
+        button.shapeCornerRadius = 7
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
-        button.bezelStyle = .texturedRounded
-        button.contentTintColor = PanelStyle.icon
+        // No system bezel: it draws its own translucent material, which over a panel you
+        // can already see through leaves the button looking like a hole.
+        button.isBordered = false
+        button.setButtonType(.momentaryChange)
         button.setAccessibilityTitle(title)
         hintTitles[ObjectIdentifier(button)] = title
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        button.widthAnchor.constraint(equalToConstant: Self.secondarySize.width).isActive = true
+        allButtons.append(button)
         return button
     }
 
     private func toolButton(_ symbol: String, _ title: String, tool: OverlayTool, _ action: Selector) -> NSButton {
         let button = self.button(symbol, title, action)
         button.setButtonType(.pushOnPushOff)
+        // The bezel used to show which tool was active; without one the state has to be
+        // drawn, so an active tool takes the accent colour.
+        (button as? CircularButton)?.selectedFill = PanelStyle.buttonSelectedFill
         toolButtons.append((button, tool))
         return button
     }
@@ -480,6 +512,7 @@ final class SelectionActionBar: NSView {
     ) -> NSButton {
         let button = self.button(onSymbol, title, action)
         button.setButtonType(.pushOnPushOff)
+        (button as? CircularButton)?.selectedFill = PanelStyle.buttonSelectedFill
         audioSymbols[ObjectIdentifier(button)] = (on: onSymbol, off: offSymbol)
         setAudioToggle(button, isOn: isOn)
         return button
@@ -504,8 +537,9 @@ final class SelectionActionBar: NSView {
         _ action: Selector
     ) -> NSButton {
         let button = CircularButton(title: "", target: self, action: action)
-        button.side = Self.primarySide
-        button.fill = fill ?? NSColor(white: 0.88, alpha: 1)
+        button.shapeSize = NSSize(width: Self.primarySide, height: Self.primarySide)
+        button.shapeCornerRadius = Self.primarySide / 2
+        button.fill = fill ?? PanelStyle.buttonFill
         button.isBordered = false
         button.setButtonType(.momentaryChange)
 
@@ -513,7 +547,7 @@ final class SelectionActionBar: NSView {
             button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.contentTintColor = fill == nil ? PanelStyle.icon : .white
+            button.glyph = fill == nil ? PanelStyle.icon : .white
         }
 
         button.setAccessibilityTitle(title)
@@ -522,6 +556,7 @@ final class SelectionActionBar: NSView {
         button.widthAnchor.constraint(equalToConstant: Self.primarySide).isActive = true
         button.heightAnchor.constraint(equalToConstant: Self.primarySide).isActive = true
         primaryButtons.append(button)
+        allButtons.append(button)
         return button
     }
 
@@ -589,6 +624,9 @@ extension SelectionActionBar {
     var testPrimaryCircles: [(rect: CGRect, cornerRadius: CGFloat)] {
         primaryButtons.compactMap { $0 as? CircularButton }.map { ($0.circle, $0.circleCornerRadius) }
     }
+    /// Alpha of the fill each button actually draws, and of the panel behind them.
+    var testButtonFillAlphas: [CGFloat] { allButtons.map(\.drawnFillAlpha) }
+    var testPanelFillAlpha: CGFloat { layer?.backgroundColor?.alpha ?? 1 }
     static var testPrimarySide: CGFloat { primarySide }
 }
 
@@ -1519,6 +1557,8 @@ final class CaptureOverlayView: NSView {
     var testPrimaryCircles: [(rect: CGRect, cornerRadius: CGFloat)] {
         actionBar?.testPrimaryCircles ?? []
     }
+    var testButtonFillAlphas: [CGFloat] { actionBar?.testButtonFillAlphas ?? [] }
+    var testPanelFillAlpha: CGFloat { actionBar?.testPanelFillAlpha ?? 1 }
     var testTool: OverlayTool { tool }
     var testActiveHint: String? { activeHint?.text }
     var testColorPaletteFrame: CGRect? { colorPalette?.frame }

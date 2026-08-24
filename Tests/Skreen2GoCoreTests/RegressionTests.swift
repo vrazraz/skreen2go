@@ -1212,6 +1212,27 @@ struct RegressionTests {
         }
     }
 
+    @Test("Every button is opaque even though the panel behind it is not")
+    func buttonsAreOpaqueOnATranslucentPanel() throws {
+        for mode in [CaptureMode.screenshot, CaptureMode.recording] {
+            let overlay = makeOverlay(size: CGSize(width: 1200, height: 800), mode: mode)
+            overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+            overlay.testShowActionBar()
+            overlay.testLayoutActionBar()
+
+            // The panel floats above the shot...
+            #expect(overlay.testPanelFillAlpha < 1)
+
+            // ...but a control you are about to press must read as solid, not as a tint
+            // of the desktop showing through.
+            let alphas = overlay.testButtonFillAlphas
+            #expect(alphas.isEmpty == false)
+            for alpha in alphas {
+                #expect(isClose(alpha, 1), "a button is drawn at alpha \(alpha) in \(mode)")
+            }
+        }
+    }
+
     @Test("The panel background offers no hint")
     func panelBackgroundHasNoHint() throws {
         let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
