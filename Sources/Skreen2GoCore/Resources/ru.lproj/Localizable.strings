@@ -9,6 +9,7 @@
 /* Capture overlay */
 "overlay.hint.idle" = "Клик — окно   •   Перетащите мышью — область   •   Esc — отмена";
 "overlay.hint.live" = "Инструмент — рисовать внутри   •   За края — размер   •   Enter — редактор   •   Esc — отмена";
+"overlay.hint.recording" = "За края — размер   •   Enter — начать запись   •   Esc — отмена";
 
 /* Tools */
 "tool.select" = "Выбор и перемещение";

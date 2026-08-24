@@ -292,9 +292,11 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleRecording() {
         if recordingController.isActive {
             recordingController.stopOrCancel()
-        } else {
-            startCapture()
+            return
         }
+        editorController?.close()
+        editorController = nil
+        captureController.start(mode: .recording)
     }
 
     @objc private func revealLastRecording() {

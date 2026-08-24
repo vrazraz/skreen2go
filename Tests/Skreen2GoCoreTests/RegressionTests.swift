@@ -264,8 +264,15 @@ struct RegressionTests {
 
     // MARK: - Live, editable capture selection
 
-    private func makeOverlay(size: CGSize = CGSize(width: 1200, height: 800)) -> CaptureOverlayView {
-        CaptureOverlayView(frame: CGRect(origin: .zero, size: size), settings: makeSettings())
+    private func makeOverlay(
+        size: CGSize = CGSize(width: 1200, height: 800),
+        mode: CaptureMode = .screenshot
+    ) -> CaptureOverlayView {
+        CaptureOverlayView(
+            frame: CGRect(origin: .zero, size: size),
+            settings: makeSettings(),
+            mode: mode
+        )
     }
 
     /// Renders the overlay and reports the alpha actually written to the backing store.
@@ -1107,15 +1114,55 @@ struct RegressionTests {
                 hints.insert(hint)
             }
         }
-        // Fourteen controls: three tools, colour, undo, redo, settings, record, system
-        // audio, microphone, copy, save, save-as, cancel.
-        #expect(hints.count == 14, "found hints: \(hints.sorted())")
+        // Eleven controls: three tools, colour, undo, redo, settings, copy, save,
+        // save-as, cancel. Recording controls belong to the other mode.
+        #expect(hints.count == 11, "found hints: \(hints.sorted())")
         #expect(hints.contains("tool.arrow".localized("Arrow")))
         #expect(hints.contains("tool.color".localized("Color")))
         #expect(hints.contains("tool.settings".localized("Settings")))
+        #expect(hints.contains("tool.copy".localized("Copy")))
+        #expect(hints.contains("tool.save".localized("Save")))
+        #expect(hints.contains("tool.record".localized("Record video")) == false)
+    }
+
+    @Test("The recording panel offers recording controls and nothing to draw with")
+    func recordingPanelHasNoAnnotationTools() throws {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800), mode: .recording)
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        let bar = try #require(overlay.testActionBarFrame)
+        var hints: Set<String> = []
+        for x in stride(from: bar.minX + 2, to: bar.maxX - 2, by: 3) {
+            let point = CGPoint(x: x, y: bar.midY)
+            if overlay.testCursorTarget(at: point) == .panelControl {
+                hints.insert(try #require(overlay.testHint(at: point), "a control with no hint at x=\(x)"))
+            }
+        }
+
+        // Settings, record, system audio, microphone, cancel.
+        #expect(hints.count == 5, "found hints: \(hints.sorted())")
         #expect(hints.contains("tool.record".localized("Record video")))
         #expect(hints.contains("tool.audio.system".localized("System audio")))
         #expect(hints.contains("tool.audio.microphone".localized("Microphone")))
+        // There is no such thing as annotating a video here.
+        #expect(hints.contains("tool.arrow".localized("Arrow")) == false)
+        #expect(hints.contains("tool.rectangle".localized("Rectangle")) == false)
+        #expect(hints.contains("tool.text".localized("Text")) == false)
+        #expect(hints.contains("tool.color".localized("Color")) == false)
+    }
+
+    @Test("Enter starts a recording rather than opening the editor")
+    func enterStartsRecordingInRecordingMode() {
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800), mode: .recording)
+        overlay.testSetSelection(CGRect(x: 100, y: 100, width: 400, height: 300))
+
+        var delivered: [SelectionAction] = []
+        overlay.onSelectionAction = { action, _ in delivered.append(action) }
+
+        overlay.confirmSelectionIfPossible()
+        #expect(delivered == [.record])
     }
 
     @Test("Hovering a control makes its hint the active one")

@@ -9,6 +9,7 @@
 /* Capture overlay */
 "overlay.hint.idle" = "Click — window   •   Drag — region   •   Esc — cancel";
 "overlay.hint.live" = "Tool — draw inside   •   Edges — resize   •   Enter — editor   •   Esc — cancel";
+"overlay.hint.recording" = "Edges — resize   •   Enter — start recording   •   Esc — cancel";
 
 /* Tools */
 "tool.select" = "Select and move";

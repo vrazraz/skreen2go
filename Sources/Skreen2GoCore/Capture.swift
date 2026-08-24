@@ -15,6 +15,14 @@ enum SelectionAction: Equatable {
     case cancel
 }
 
+/// Which job the overlay was opened for. The selection gesture is identical either way;
+/// what differs is the panel, because annotating a video is not a thing you can do and
+/// choosing audio sources for a still is not either.
+enum CaptureMode: Equatable {
+    case screenshot
+    case recording
+}
+
 /// What the overlay hands to the controller when a terminal action runs: the region to
 /// capture plus the annotations already drawn on it, in image coordinates.
 struct SelectionCapture {
@@ -195,14 +203,20 @@ final class SelectionActionBar: NSView {
     private var systemAudioButton: NSButton?
     private var microphoneButton: NSButton?
     private let settings: SettingsStore
+    private let mode: CaptureMode
     /// Hint text per control. Native tooltips are useless here: they open in a window at
     /// an ordinary level, which the `.screenSaver`-level overlay covers, so the overlay
     /// draws its own hints instead.
     private var hintTitles: [ObjectIdentifier: String] = [:]
+    /// Which glyph each audio toggle wears in either state.
+    private var audioSymbols: [ObjectIdentifier: (on: String, off: String)] = [:]
+
+    private static let primarySide: CGFloat = 40
 
     init(
         color: NSColor,
         settings: SettingsStore,
+        mode: CaptureMode,
         onTool: @escaping (OverlayTool) -> Void,
         onColorRequest: @escaping () -> Void,
         onUndo: @escaping () -> Void,
@@ -210,6 +224,7 @@ final class SelectionActionBar: NSView {
         onAction: @escaping (SelectionAction) -> Void
     ) {
         self.settings = settings
+        self.mode = mode
         self.onTool = onTool
         self.onColorRequest = onColorRequest
         self.onUndo = onUndo
@@ -245,6 +260,13 @@ final class SelectionActionBar: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6)
         ])
 
+        switch mode {
+        case .screenshot: buildScreenshotControls(in: stack, color: color)
+        case .recording: buildRecordingControls(in: stack)
+        }
+    }
+
+    private func buildScreenshotControls(in stack: NSStackView, color: NSColor) {
         stack.addArrangedSubview(toolButton("arrow.up.right", "tool.arrow".localized("Arrow"), tool: .arrow, #selector(arrowTool)))
         stack.addArrangedSubview(toolButton("rectangle", "tool.rectangle".localized("Rectangle"), tool: .rectangle, #selector(rectangleTool)))
         stack.addArrangedSubview(toolButton("textformat", "tool.text".localized("Text"), tool: .text, #selector(textTool)))
@@ -269,19 +291,53 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
 
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("record.circle", "tool.record".localized("Record video"), #selector(record)))
-        // The two audio sources sit next to the record button so the choice is made in the
-        // same glance as the decision to record, and they persist between sessions.
+        // The two things a screenshot is actually for, at the size that says so.
+        stack.addArrangedSubview(primaryButton(
+            "doc.on.doc",
+            "tool.copy".localized("Copy"),
+            fill: nil,
+            #selector(copyShot)
+        ))
+        stack.addArrangedSubview(primaryButton(
+            "square.and.arrow.down",
+            "tool.save".localized("Save"),
+            fill: nil,
+            #selector(save)
+        ))
+
+        stack.addArrangedSubview(separator())
+        stack.addArrangedSubview(button("square.and.arrow.down.on.square", "tool.saveAs".localized("Save As…"), #selector(saveAs)))
+        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
+
+        setActiveTool(.none)
+    }
+
+    private func buildRecordingControls(in stack: NSStackView) {
+        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
+        stack.addArrangedSubview(separator())
+
+        stack.addArrangedSubview(primaryButton(
+            nil,
+            "tool.record".localized("Record video"),
+            fill: .systemRed,
+            #selector(record)
+        ))
+
+        // The audio sources sit right beside the button that uses them, so the choice is
+        // made in the same glance as the decision to record. They persist between runs.
         let systemAudio = audioToggle(
-            "speaker.wave.2",
+            on: "speaker.wave.2",
+            off: "speaker.slash",
             "tool.audio.system".localized("System audio"),
             isOn: settings.recordsSystemAudio,
             #selector(toggleSystemAudio)
         )
         systemAudioButton = systemAudio
         stack.addArrangedSubview(systemAudio)
+
         let microphone = audioToggle(
-            "mic",
+            on: "mic",
+            off: "mic.slash",
             "tool.audio.microphone".localized("Microphone"),
             isOn: settings.recordsMicrophone,
             #selector(toggleMicrophone)
@@ -290,12 +346,7 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(microphone)
 
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("doc.on.doc", "tool.copy".localized("Copy"), #selector(copyShot)))
-        stack.addArrangedSubview(button("square.and.arrow.down", "tool.save".localized("Save"), #selector(save)))
-        stack.addArrangedSubview(button("square.and.arrow.down.on.square", "tool.saveAs".localized("Save As…"), #selector(saveAs)))
         stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
-
-        setActiveTool(.none)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -359,10 +410,61 @@ final class SelectionActionBar: NSView {
         return button
     }
 
-    private func audioToggle(_ symbol: String, _ title: String, isOn: Bool, _ action: Selector) -> NSButton {
-        let button = self.button(symbol, title, action)
+    /// A source that is off is drawn struck through, so the state reads at a glance
+    /// instead of having to be inferred from a pressed-in look.
+    private func audioToggle(
+        on onSymbol: String,
+        off offSymbol: String,
+        _ title: String,
+        isOn: Bool,
+        _ action: Selector
+    ) -> NSButton {
+        let button = self.button(onSymbol, title, action)
         button.setButtonType(.pushOnPushOff)
+        audioSymbols[ObjectIdentifier(button)] = (on: onSymbol, off: offSymbol)
+        setAudioToggle(button, isOn: isOn)
+        return button
+    }
+
+    private func setAudioToggle(_ button: NSButton?, isOn: Bool) {
+        guard let button, let symbols = audioSymbols[ObjectIdentifier(button)] else { return }
         button.state = isOn ? .on : .off
+        let symbol = isOn ? symbols.on : symbols.off
+        button.image = NSImage(
+            systemSymbolName: symbol,
+            accessibilityDescription: button.accessibilityTitle()
+        )
+    }
+
+    /// The one or two things this panel exists to do: big, round, and impossible to miss
+    /// among the icon buttons.
+    private func primaryButton(
+        _ symbol: String?,
+        _ title: String,
+        fill: NSColor?,
+        _ action: Selector
+    ) -> NSButton {
+        let button = NSButton(title: "", target: self, action: action)
+        button.isBordered = false
+        button.setButtonType(.momentaryChange)
+        button.wantsLayer = true
+        button.layer?.cornerRadius = Self.primarySide / 2
+        button.layer?.backgroundColor = (fill ?? NSColor(white: 0.88, alpha: 1)).cgColor
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
+
+        if let symbol {
+            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+            button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
+            button.contentTintColor = fill == nil ? .black : .white
+        }
+
+        button.setAccessibilityTitle(title)
+        hintTitles[ObjectIdentifier(button)] = title
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.widthAnchor.constraint(equalToConstant: Self.primarySide).isActive = true
+        button.heightAnchor.constraint(equalToConstant: Self.primarySide).isActive = true
         return button
     }
 
@@ -392,17 +494,19 @@ final class SelectionActionBar: NSView {
 
     @objc private func toggleSystemAudio(_ sender: NSButton) {
         settings.recordsSystemAudio = sender.state == .on
+        setAudioToggle(sender, isOn: sender.state == .on)
     }
 
     @objc private func toggleMicrophone(_ sender: NSButton) {
         settings.recordsMicrophone = sender.state == .on
+        setAudioToggle(sender, isOn: sender.state == .on)
     }
 
     /// Settings can change the toggles behind the bar's back, so they are re-read whenever
     /// the settings window closes.
     func refreshAudioToggles() {
-        systemAudioButton?.state = settings.recordsSystemAudio ? .on : .off
-        microphoneButton?.state = settings.recordsMicrophone ? .on : .off
+        setAudioToggle(systemAudioButton, isOn: settings.recordsSystemAudio)
+        setAudioToggle(microphoneButton, isOn: settings.recordsMicrophone)
     }
 
     @objc private func copyShot() { onAction(.copy) }
@@ -424,6 +528,7 @@ final class CaptureOverlayView: NSView {
     var onSelectionAction: ((SelectionAction, SelectionCapture) -> Void)?
 
     let settings: SettingsStore
+    let mode: CaptureMode
 
     /// Grab points around a live selection.
     enum Handle: CaseIterable {
@@ -477,7 +582,8 @@ final class CaptureOverlayView: NSView {
     private static let minimumSelectionSide: CGFloat = 8
     private static let dragThreshold: CGFloat = 3
 
-    init(frame: CGRect, settings: SettingsStore) {
+    init(frame: CGRect, settings: SettingsStore, mode: CaptureMode = .screenshot) {
+        self.mode = mode
         self.settings = settings
         self.currentColor = settings.defaultColor
         super.init(frame: frame)
@@ -525,6 +631,7 @@ final class CaptureOverlayView: NSView {
             let created = SelectionActionBar(
                 color: currentColor,
                 settings: settings,
+                mode: mode,
                 onTool: { [weak self] tool in self?.setTool(tool) },
                 onColorRequest: { [weak self] in self?.toggleColorPalette() },
                 onUndo: { [weak self] in self?.undo() },
@@ -554,6 +661,20 @@ final class CaptureOverlayView: NSView {
 
     /// Resetting settings from the gear button turns both audio sources off, which would
     /// otherwise leave the panel showing them as still on.
+    /// The live hint names the action Enter performs, and that differs by mode.
+    private var liveHint: String {
+        switch mode {
+        case .screenshot:
+            return "overlay.hint.live".localized(
+                "Tool — draw inside   •   Edges — resize   •   Enter — editor   •   Esc — cancel"
+            )
+        case .recording:
+            return "overlay.hint.recording".localized(
+                "Edges — resize   •   Enter — start recording   •   Esc — cancel"
+            )
+        }
+    }
+
     func adoptAudioSettings() {
         actionBar?.refreshAudioToggles()
     }
@@ -725,11 +846,15 @@ final class CaptureOverlayView: NSView {
 
         let size = palette.preferredSize
         let anchor = bar.colorButtonFrame
+        // Lined up with the colour button, but clearing the whole bar: the button is
+        // centred in a bar tall enough for the primary buttons, so measuring from the
+        // button alone would open the palette on top of its own panel.
+        let barFrame = bar.frame
         let gap: CGFloat = 6
-        var origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.minY - gap - size.height)
-        // Under the button by default, above it when there is no room below.
+        var origin = CGPoint(x: anchor.midX - size.width / 2, y: barFrame.minY - gap - size.height)
+        // Under the bar by default, above it when there is no room below.
         if origin.y < bounds.minY + 2 {
-            origin.y = anchor.maxY + gap
+            origin.y = barFrame.maxY + gap
         }
         origin.x = min(max(origin.x, bounds.minX + 2), max(bounds.minX + 2, bounds.maxX - size.width - 2))
         palette.frame = CGRect(origin: origin, size: size)
@@ -753,7 +878,9 @@ final class CaptureOverlayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if AppKeyboardShortcut.isCommandC(keyCode: event.keyCode, modifiers: flags) {
+        // Copying is a screenshot action; in recording mode the shortcut belongs to
+        // whatever the user was working in.
+        if mode == .screenshot, AppKeyboardShortcut.isCommandC(keyCode: event.keyCode, modifiers: flags) {
             guard performActionIfPossible(.copy) else {
                 super.keyDown(with: event)
                 return
@@ -1130,9 +1257,14 @@ final class CaptureOverlayView: NSView {
 
     /// Returns `false` when there is nothing to confirm, so a caller routing a key event
     /// here can pass the event on instead of swallowing it.
+    /// Enter runs whatever this overlay was opened to do: hand a still to the editor, or
+    /// start recording.
     @discardableResult
     func confirmSelectionIfPossible() -> Bool {
-        performActionIfPossible(.annotate)
+        switch mode {
+        case .screenshot: return performActionIfPossible(.annotate)
+        case .recording: return performActionIfPossible(.record)
+        }
     }
 
     /// Ends an in-progress text field without committing. Returns whether there was one.
@@ -1283,7 +1415,7 @@ final class CaptureOverlayView: NSView {
 
     private func drawHint(forLiveSelection isLive: Bool) {
         let message = isLive
-            ? "overlay.hint.live".localized("Tool — draw inside   •   Edges — resize   •   Enter — editor   •   Esc — cancel")
+            ? liveHint
             : "overlay.hint.idle".localized("Click — window   •   Drag — region   •   Esc — cancel")
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 15, weight: .medium),
@@ -1371,6 +1503,7 @@ final class CaptureOverlayView: NSView {
 final class CaptureController {
     private let capture: any ScreenshotCapturing
     private let settings: SettingsStore
+    private var mode: CaptureMode = .screenshot
     private var overlayWindow: CaptureOverlayWindow?
     private var overlayView: CaptureOverlayView?
     private var escapeMonitor: Any?
@@ -1396,7 +1529,8 @@ final class CaptureController {
         self.capture = capture ?? ScreenshotCapture()
     }
 
-    func start() {
+    func start(mode: CaptureMode = .screenshot) {
+        self.mode = mode
         // Triggering capture while the overlay is on screen dismisses it, so a stuck
         // overlay can never lock the user out of the hot key.
         if overlayWindow != nil {
@@ -1438,7 +1572,11 @@ final class CaptureController {
         panel.hidesOnDeactivate = false
         panel.acceptsMouseMovedEvents = true
 
-        let view = CaptureOverlayView(frame: CGRect(origin: .zero, size: unionFrame.size), settings: settings)
+        let view = CaptureOverlayView(
+            frame: CGRect(origin: .zero, size: unionFrame.size),
+            settings: settings,
+            mode: mode
+        )
         view.onCancel = { [weak self] in self?.cancel() }
         view.onSelectionAction = { [weak self] action, payload in self?.perform(action, payload: payload) }
         panel.contentView = view
@@ -1481,7 +1619,8 @@ final class CaptureController {
                 return nil
             }
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            if AppKeyboardShortcut.isCommandC(keyCode: event.keyCode, modifiers: flags) {
+            if self.mode == .screenshot,
+               AppKeyboardShortcut.isCommandC(keyCode: event.keyCode, modifiers: flags) {
                 guard self.overlayView?.performActionIfPossible(.copy) == true else { return event }
                 return nil
             }
