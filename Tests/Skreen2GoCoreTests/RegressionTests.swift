@@ -1184,6 +1184,34 @@ struct RegressionTests {
         #expect(overlay.testActiveHint == "tool.saveAs".localized("Save As…"))
     }
 
+    @Test("The panel's primary buttons are equal circles, not squircles")
+    func primaryButtonsAreCircles() throws {
+        for mode in [CaptureMode.screenshot, CaptureMode.recording] {
+            let overlay = makeOverlay(size: CGSize(width: 1200, height: 800), mode: mode)
+            overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+            overlay.testShowActionBar()
+            overlay.testLayoutActionBar()
+
+            let buttons = overlay.testPrimaryButtons
+            let expected = mode == .screenshot ? 3 : 1
+            #expect(buttons.count == expected, "\(mode) has \(buttons.count) primary buttons")
+
+            let side = SelectionActionBar.testPrimarySide
+            let circles = overlay.testPrimaryCircles
+            #expect(circles.count == expected)
+            for circle in circles {
+                // Judged by the shape drawn, not the button's frame: AppKit stretches a
+                // button with an image past its height constraint, and half the width as
+                // a corner radius on a frame that is not square is a superellipse.
+                #expect(isClose(circle.rect.width, side))
+                #expect(isClose(circle.rect.height, side), "a circle needs a square")
+                #expect(isClose(circle.cornerRadius, side / 2))
+            }
+            // And every one of them the same size.
+            #expect(Set(circles.map { $0.rect.width }).count == 1)
+        }
+    }
+
     @Test("The panel background offers no hint")
     func panelBackgroundHasNoHint() throws {
         let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
