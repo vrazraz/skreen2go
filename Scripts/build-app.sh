@@ -70,6 +70,22 @@ if [[ ! -f "$entitlements" || ! -f "$info_plist" || ! -f "$privacy_manifest" ]];
     exit 2
 fi
 
+# The Info.plist strings macOS itself shows — the Screen Recording prompt above all —
+# are localized from `.lproj` directories in the app bundle, not from the SwiftPM
+# resource bundle, which only the app's own code reads.
+info_plist_languages=("${(@f)$(/usr/libexec/PlistBuddy -c 'Print :CFBundleLocalizations' "$info_plist" \
+    | sed -n 's/^ *\([A-Za-z_-]*\)$/\1/p')}")
+if (( ${#info_plist_languages} == 0 )); then
+    print -u2 "Info.plist declares no CFBundleLocalizations."
+    exit 2
+fi
+for language in $info_plist_languages; do
+    if [[ ! -f "$project_dir/Resources/$language.lproj/InfoPlist.strings" ]]; then
+        print -u2 "Missing Resources/$language.lproj/InfoPlist.strings for a declared localization."
+        exit 2
+    fi
+done
+
 if [[ "$architectures" == "universal" ]]; then
     if ! command -v lipo >/dev/null 2>&1; then
         print -u2 "Universal builds require lipo from Xcode Command Line Tools."
@@ -113,6 +129,12 @@ if [[ ! -d "$resource_bundle" ]]; then
     exit 2
 fi
 cp -R "$resource_bundle" "$app_dir/Contents/Resources/"
+
+for language in $info_plist_languages; do
+    mkdir -p "$app_dir/Contents/Resources/$language.lproj"
+    cp "$project_dir/Resources/$language.lproj/InfoPlist.strings" \
+        "$app_dir/Contents/Resources/$language.lproj/InfoPlist.strings"
+done
 
 if [[ -f "$app_icon" ]]; then
     cp "$app_icon" "$app_dir/Contents/Resources/AppIcon.icns"

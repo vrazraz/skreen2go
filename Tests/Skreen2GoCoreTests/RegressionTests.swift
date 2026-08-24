@@ -829,6 +829,64 @@ struct RegressionTests {
         }
     }
 
+    /// The bundle-level `Resources/`, which holds Info.plist and the `.lproj` folders
+    /// macOS reads. Separate from the SwiftPM resources the app's own code looks in.
+    private func bundleResourcesDirectory() -> String {
+        #filePath.replacingOccurrences(
+            of: "/Tests/Skreen2GoCoreTests/RegressionTests.swift",
+            with: "/Resources"
+        )
+    }
+
+    private func infoPlist() throws -> [String: Any] {
+        let data = try Data(contentsOf: URL(fileURLWithPath: bundleResourcesDirectory() + "/Info.plist"))
+        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return plist as? [String: Any] ?? [:]
+    }
+
+    private func infoPlistStrings(_ language: String) throws -> [String: String] {
+        let path = bundleResourcesDirectory() + "/\(language).lproj/InfoPlist.strings"
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        return plist as? [String: String] ?? [:]
+    }
+
+    /// The Screen Recording prompt is drawn by macOS from Info.plist, not by our code, so
+    /// it is the one piece of user-facing text `L10n` can never reach. It used to be
+    /// hardcoded in Russian and was shown that way in every language.
+    @Test("Every declared localization translates the permission prompt")
+    func permissionPromptIsLocalized() throws {
+        let declared = try #require(infoPlist()["CFBundleLocalizations"] as? [String])
+        #expect(declared.isEmpty == false)
+
+        for language in declared {
+            let strings = try infoPlistStrings(language)
+            let prompt = strings["NSScreenCaptureUsageDescription"]
+            #expect(prompt?.isEmpty == false, "\(language) does not translate the capture prompt")
+        }
+    }
+
+    @Test("Info.plist's own strings are the development-region ones")
+    func infoPlistBaseMatchesDevelopmentRegion() throws {
+        let plist = try infoPlist()
+        let region = try #require(plist["CFBundleDevelopmentRegion"] as? String)
+        let base = try #require(plist["NSScreenCaptureUsageDescription"] as? String)
+
+        // Whatever locale macOS cannot match falls back to the plist's own value, so it
+        // has to read as the development region rather than as some other language.
+        #expect(try infoPlistStrings(region)["NSScreenCaptureUsageDescription"] == base)
+    }
+
+    @Test("Every language offered in Settings is declared to macOS as well")
+    func offeredLanguagesAreDeclaredInTheBundle() throws {
+        let declared = try #require(infoPlist()["CFBundleLocalizations"] as? [String])
+
+        for language in InterfaceLanguage.allCases {
+            guard let code = language.bundleCode else { continue }
+            #expect(declared.contains(code), "\(code) is offered but not in CFBundleLocalizations")
+        }
+    }
+
     // MARK: - Settings from the action panel
 
     @Test("The settings button neither captures nor drops the frame")

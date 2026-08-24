@@ -24,5 +24,7 @@ jobs:
           plutil -lint Resources/Info.plist
           plutil -lint Resources/PrivacyInfo.xcprivacy
           plutil -lint Resources/Skreen2Go.entitlements
+          plutil -lint Resources/*.lproj/InfoPlist.strings
+          plutil -lint Sources/Skreen2GoCore/Resources/*.lproj/Localizable.strings
           test -f Resources/AppIcon.icns
           git diff --check

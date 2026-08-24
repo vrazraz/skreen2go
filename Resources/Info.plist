@@ -34,6 +34,6 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSScreenCaptureUsageDescription</key>
-	<string>Skreen2Go нужен доступ к записи экрана, чтобы создавать скриншоты окон и областей.</string>
+	<string>Skreen2Go needs screen recording access to capture windows and regions.</string>
 </dict>
 </plist>
