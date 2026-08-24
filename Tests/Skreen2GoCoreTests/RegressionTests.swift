@@ -2211,4 +2211,460 @@ struct RegressionTests {
         #expect(settings.showsClicksInRecording)
         #expect(settings.recordingHotKey == HotKeyCombination.defaultRecording)
     }
+
+    // MARK: - Recording session
+
+    /// Shared ordering log, so a test can assert that the countdown was taken down before
+    /// the first frame was ever captured.
+    private final class RecordingEventLog {
+        var events: [String] = []
+        func add(_ event: String) { events.append(event) }
+    }
+
+    private final class FakeScreenRecorder: ScreenRecording {
+        var onUnexpectedStop: ((Error?) -> Void)?
+        private(set) var isRecording = false
+
+        let log: RecordingEventLog
+        var startedPlans: [RecordingPlan] = []
+        var startError: Error?
+        var stopError: Error?
+        private var writtenURL: URL?
+
+        init(log: RecordingEventLog) { self.log = log }
+
+        func start(_ plan: RecordingPlan, writingTo url: URL) async throws {
+            log.add("recorder.start")
+            if let startError { throw startError }
+            try Data("video".utf8).write(to: url)
+            startedPlans.append(plan)
+            writtenURL = url
+            isRecording = true
+        }
+
+        func stop() async throws -> URL {
+            isRecording = false
+            if let stopError { throw stopError }
+            guard let writtenURL else { throw RecordingError.notRunning }
+            return writtenURL
+        }
+
+        func simulateSystemStop() {
+            isRecording = false
+            onUnexpectedStop?(nil)
+        }
+    }
+
+    private final class FakeCountdown: RecordingCountdownPresenting {
+        let log: RecordingEventLog
+        var displayed: [Int] = []
+        var dismissals = 0
+
+        init(log: RecordingEventLog) { self.log = log }
+
+        func show(seconds: Int, over area: CGRect) {
+            displayed.append(seconds)
+            log.add("countdown.show")
+        }
+
+        func update(seconds: Int) { displayed.append(seconds) }
+
+        func dismiss() {
+            dismissals += 1
+            log.add("countdown.dismiss")
+        }
+    }
+
+    private final class FakeTicker: RecordingTicking {
+        private var onTick: (() -> Void)?
+        var isRunning: Bool { onTick != nil }
+
+        func start(interval: TimeInterval, onTick: @escaping () -> Void) {
+            self.onTick = onTick
+        }
+
+        func stop() { onTick = nil }
+
+        func fire(_ times: Int = 1) {
+            for _ in 0..<times { onTick?() }
+        }
+    }
+
+    private final class FakeMicrophone: MicrophoneAuthorizing {
+        var authorized = false
+        var determined = true
+        var requestCount = 0
+        /// Every read of either property, so a test can prove the microphone is not so
+        /// much as looked at while the toggle is off.
+        var consultations = 0
+
+        var isAuthorized: Bool {
+            consultations += 1
+            return authorized
+        }
+
+        var isDetermined: Bool {
+            consultations += 1
+            return determined
+        }
+
+        func requestAccess() async -> Bool {
+            requestCount += 1
+            determined = true
+            return authorized
+        }
+    }
+
+    private struct RecordingHarness {
+        let controller: RecordingController
+        let recorder: FakeScreenRecorder
+        let countdown: FakeCountdown
+        let ticker: FakeTicker
+        let microphone: FakeMicrophone
+        let log: RecordingEventLog
+        let settings: SettingsStore
+        let outputFolder: URL
+    }
+
+    /// Points the store at a plain path rather than a security-scoped bookmark, so
+    /// `withOutputFolderAccessAsync` writes to a temporary directory without needing a
+    /// sandbox extension the test binary does not have.
+    private func makeRecordingHarness(root: URL) throws -> RecordingHarness {
+        let outputFolder = root.appendingPathComponent("out", isDirectory: true)
+        let suiteName = "Skreen2GoRecording.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set(outputFolder.path, forKey: "outputFolderPath")
+
+        let settings = SettingsStore(defaults: defaults)
+        let log = RecordingEventLog()
+        let recorder = FakeScreenRecorder(log: log)
+        let countdown = FakeCountdown(log: log)
+        let ticker = FakeTicker()
+        let microphone = FakeMicrophone()
+
+        let controller = RecordingController(
+            settings: settings,
+            recorder: recorder,
+            microphone: microphone,
+            countdown: countdown,
+            ticker: ticker,
+            displays: { [RecordingDisplay(displayID: 1, frame: CGRect(x: 0, y: 0, width: 1440, height: 900), backingScaleFactor: 2)] },
+            now: { Date(timeIntervalSince1970: 1_767_000_000) }
+        )
+
+        return RecordingHarness(
+            controller: controller,
+            recorder: recorder,
+            countdown: countdown,
+            ticker: ticker,
+            microphone: microphone,
+            log: log,
+            settings: settings,
+            outputFolder: outputFolder
+        )
+    }
+
+    private func makeTestRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Skreen2GoTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        return root
+    }
+
+    /// Lets the controller's internal tasks run. Every awaited call in the fakes returns
+    /// immediately, so a handful of turns is enough.
+    private func settle(_ turns: Int = 40) async {
+        for _ in 0..<turns { await Task.yield() }
+    }
+
+    private var sampleRegion: RecordingRequest {
+        RecordingRequest(area: CGRect(x: 100, y: 100, width: 400, height: 300), windowID: nil)
+    }
+
+    @Test("Recording only starts once the countdown has run out")
+    func countdownPrecedesRecording() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        harness.controller.start(sampleRegion)
+        await settle()
+
+        #expect(harness.controller.state == .countdown(remaining: 3))
+        #expect(harness.recorder.startedPlans.isEmpty)
+
+        harness.ticker.fire()
+        #expect(harness.controller.state == .countdown(remaining: 2))
+        harness.ticker.fire()
+        #expect(harness.controller.state == .countdown(remaining: 1))
+        #expect(harness.recorder.startedPlans.isEmpty, "the third second has not passed yet")
+
+        harness.ticker.fire()
+        await settle()
+        #expect(harness.controller.state == .recording)
+        #expect(harness.recorder.startedPlans.count == 1)
+    }
+
+    @Test("The countdown is taken down before the first frame is captured")
+    func countdownIsDismissedBeforeCapture() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        let dismissal = try #require(harness.log.events.firstIndex(of: "countdown.dismiss"))
+        let start = try #require(harness.log.events.firstIndex(of: "recorder.start"))
+        #expect(dismissal < start)
+    }
+
+    @Test("Cancelling during the countdown never touches the recorder")
+    func cancellingCountdownRecordsNothing() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire()
+
+        harness.controller.stopOrCancel()
+        await settle()
+
+        #expect(harness.controller.state == .idle)
+        #expect(harness.controller.isActive == false)
+        #expect(harness.recorder.startedPlans.isEmpty)
+        #expect(harness.countdown.dismissals == 1)
+        #expect(harness.ticker.isRunning == false)
+
+        // Further ticks from a stale timer must not resurrect the session.
+        harness.ticker.fire(5)
+        await settle()
+        #expect(harness.controller.state == .idle)
+    }
+
+    @Test("Stopping a recording saves it into the output folder")
+    func stoppingSavesTheRecording() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        var saved: URL?
+        harness.controller.onSaved = { saved = $0 }
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        harness.controller.stopOrCancel()
+        await settle()
+
+        let url = try #require(saved)
+        #expect(harness.controller.state == .idle)
+        #expect(url.deletingLastPathComponent().path == harness.outputFolder.path)
+        #expect(url.lastPathComponent.hasPrefix("Recording "))
+        #expect(url.pathExtension == "mp4")
+        #expect(try String(contentsOf: url, encoding: .utf8) == "video")
+    }
+
+    @Test("A stream the system ends on its own still saves what was recorded")
+    func systemStopStillSaves() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        var saved: URL?
+        harness.controller.onSaved = { saved = $0 }
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        harness.recorder.simulateSystemStop()
+        await settle()
+
+        #expect(saved != nil, "a window closing mid-recording must not throw the file away")
+        #expect(harness.controller.state == .idle)
+    }
+
+    @Test("A second recording cannot start on top of a running one")
+    func secondRecordingIsRefused() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        var errors: [String] = []
+        harness.controller.onError = { errors.append($0) }
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        harness.controller.start(sampleRegion)
+        await settle()
+
+        #expect(errors.count == 1)
+        #expect(harness.controller.state == .recording)
+        #expect(harness.recorder.startedPlans.count == 1)
+    }
+
+    @Test("A recorder that refuses to start leaves no session behind")
+    func failedStartResetsTheSession() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+        harness.recorder.startError = RecordingError.permissionDenied
+
+        var errors: [String] = []
+        harness.controller.onError = { errors.append($0) }
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        #expect(harness.controller.state == .idle)
+        #expect(harness.controller.isActive == false)
+        #expect(errors.count == 1)
+        #expect(harness.ticker.isRunning == false)
+    }
+
+    @Test("With the microphone toggle off, the microphone is never even consulted")
+    func microphoneUntouchedWhenOff() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+        harness.settings.recordsMicrophone = false
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        // This is the guarantee that a first launch never raises a microphone prompt.
+        #expect(harness.microphone.consultations == 0)
+        #expect(harness.microphone.requestCount == 0)
+        #expect(harness.recorder.startedPlans.first?.capturesMicrophone == false)
+    }
+
+    @Test("Access is asked for once when the microphone has never been decided")
+    func microphoneAccessRequestedOnce() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+        harness.settings.recordsMicrophone = true
+        harness.microphone.determined = false
+        harness.microphone.authorized = true
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        #expect(harness.microphone.requestCount == 1)
+        #expect(harness.recorder.startedPlans.first?.capturesMicrophone == true)
+    }
+
+    @Test("A refused microphone costs the microphone, not the recording")
+    func deniedMicrophoneStillRecords() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+        harness.settings.recordsMicrophone = true
+        harness.microphone.determined = true
+        harness.microphone.authorized = false
+
+        var notices: [RecordingNotice] = []
+        harness.controller.onNotice = { notices.append($0) }
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        #expect(notices == [.microphoneUnavailable])
+        #expect(harness.controller.state == .recording)
+        #expect(harness.recorder.startedPlans.first?.capturesMicrophone == false)
+    }
+
+    @Test("The user is told when a selection had to be cut back to one display")
+    func trimmedSelectionIsAnnounced() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        var notices: [RecordingNotice] = []
+        harness.controller.onNotice = { notices.append($0) }
+
+        // Reaches 200pt past the right edge of the single 1440pt-wide display.
+        harness.controller.start(RecordingRequest(
+            area: CGRect(x: 1240, y: 100, width: 400, height: 200),
+            windowID: nil
+        ))
+        await settle()
+
+        #expect(notices == [.trimmedToOneDisplay])
+    }
+
+    @Test("Audio toggles reach the recording exactly as they were set")
+    func audioTogglesReachThePlan() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+        harness.settings.recordsSystemAudio = true
+        harness.settings.recordsMicrophone = true
+        harness.microphone.determined = true
+        harness.microphone.authorized = true
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        let plan = try #require(harness.recorder.startedPlans.first)
+        #expect(plan.capturesSystemAudio)
+        #expect(plan.capturesMicrophone)
+    }
+
+    @Test("Stopping when nothing is running does nothing at all")
+    func stoppingWhileIdleIsHarmless() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        var errors: [String] = []
+        harness.controller.onError = { errors.append($0) }
+
+        harness.controller.stopOrCancel()
+        harness.controller.stopOrCancel()
+        await settle()
+
+        #expect(harness.controller.state == .idle)
+        #expect(errors.isEmpty)
+    }
+
+    @Test("Quitting mid-recording still closes the file")
+    func terminationFinishesTheFile() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        harness.controller.start(sampleRegion)
+        await settle()
+        harness.ticker.fire(3)
+        await settle()
+
+        await harness.controller.finishBeforeTermination()
+
+        #expect(harness.controller.state == .idle)
+        let saved = try FileManager.default.contentsOfDirectory(atPath: harness.outputFolder.path)
+        #expect(saved.contains { $0.hasSuffix(".mp4") })
+    }
 }

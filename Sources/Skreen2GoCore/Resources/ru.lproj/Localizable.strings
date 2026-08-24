@@ -69,6 +69,11 @@
 /* Save panel */
 "savePanel.title" = "Сохранить скриншот";
 
+/* Recording */
+"recording.countdown.caption" = "Запись начнётся через…";
+"recording.notice.singleDisplay" = "Видео записывается с одного экрана, поэтому выделение обрезано.";
+"recording.notice.microphoneUnavailable" = "Нет доступа к микрофону — запись идёт без него.";
+
 /* Errors */
 "error.title" = "Ошибка";
 "error.capture.title" = "Не удалось создать скриншот";

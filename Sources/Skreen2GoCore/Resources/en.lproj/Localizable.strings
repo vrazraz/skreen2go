@@ -69,6 +69,11 @@
 /* Save panel */
 "savePanel.title" = "Save Screenshot";
 
+/* Recording */
+"recording.countdown.caption" = "Recording starts in…";
+"recording.notice.singleDisplay" = "Video records one display, so the selection was trimmed.";
+"recording.notice.microphoneUnavailable" = "No microphone access — recording without it.";
+
 /* Errors */
 "error.title" = "Error";
 "error.capture.title" = "Could not take the screenshot";
