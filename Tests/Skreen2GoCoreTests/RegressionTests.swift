@@ -1233,6 +1233,41 @@ struct RegressionTests {
         }
     }
 
+    @Test("The animated background covers the whole panel")
+    func panelBackgroundFillsThePanel() throws {
+        for style in PanelBackgroundStyle.allCases {
+            let settings = makeSettings()
+            settings.panelBackground = style
+            let overlay = CaptureOverlayView(
+                frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
+                settings: settings,
+                mode: .screenshot
+            )
+            overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+            overlay.testShowActionBar()
+            overlay.testLayoutActionBar()
+
+            let bar = try #require(overlay.testActionBarFrame)
+            let background = try #require(overlay.testPanelBackgroundFrame, "\(style) has no background")
+            // The panel is built at zero size and grows to fit its controls; the
+            // background has to grow with it rather than stay where it started.
+            #expect(isClose(background.width, bar.width), "\(style) background is \(background.width) wide")
+            #expect(isClose(background.height, bar.height))
+        }
+    }
+
+    @Test("The panel background style round-trips and resets")
+    func panelBackgroundSettingRoundTrips() {
+        let settings = makeSettings()
+        #expect(settings.panelBackground == .glass)
+
+        settings.panelBackground = .plasma
+        #expect(settings.panelBackground == .plasma)
+
+        settings.reset()
+        #expect(settings.panelBackground == .glass)
+    }
+
     @Test("The panel background offers no hint")
     func panelBackgroundHasNoHint() throws {
         let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))

@@ -483,6 +483,14 @@ final class SettingsStore {
         set { defaults.set(newValue, forKey: Key.showsCursorInRecording); notify() }
     }
 
+    var panelBackground: PanelBackgroundStyle {
+        get {
+            PanelBackgroundStyle(rawValue: defaults.string(forKey: Key.panelBackground) ?? "")
+                ?? .default
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.panelBackground); notify() }
+    }
+
     var showsClicksInRecording: Bool {
         get { defaults.object(forKey: Key.showsClicksInRecording) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.showsClicksInRecording); notify() }
@@ -550,6 +558,7 @@ final class SettingsStore {
         static let recordsMicrophone = "recordsMicrophone"
         static let showsCursorInRecording = "showsCursorInRecording"
         static let showsClicksInRecording = "showsClicksInRecording"
+        static let panelBackground = "panelBackground"
         static let outputFormat = "outputFormat"
         static let outputFolderPath = "outputFolderPath"
         static let outputFolderBookmark = "outputFolderBookmark"
@@ -573,7 +582,7 @@ final class SettingsStore {
             strokeOpacity, textSize, textOpacity, textBold, blurRadius,
             showNotifications, launchAtLogin, interfaceLanguage,
             recordingHotKeyKeyCode, recordingHotKeyModifiers, recordsSystemAudio,
-            recordsMicrophone, showsCursorInRecording, showsClicksInRecording
+            recordsMicrophone, showsCursorInRecording, showsClicksInRecording, panelBackground
         ]
     }
 }

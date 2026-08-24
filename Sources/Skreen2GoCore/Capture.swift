@@ -92,12 +92,12 @@ final class ColorPaletteView: NSView {
     private let onPick: (NSColor) -> Void
     private var swatches: [(button: NSButton, color: NSColor)] = []
 
-    init(selected: NSColor, onPick: @escaping (NSColor) -> Void) {
+    init(selected: NSColor, settings: SettingsStore, onPick: @escaping (NSColor) -> Void) {
         self.onPick = onPick
         super.init(frame: .zero)
 
         appearance = NSAppearance(named: .aqua)
-        PanelStyle.apply(to: self, cornerRadius: 8)
+        PanelStyle.apply(to: self, settings: settings, cornerRadius: 8)
 
         let rows = stride(from: 0, to: Self.colors.count, by: Self.columns).map { start in
             let slice = Self.colors[start..<min(start + Self.columns, Self.colors.count)]
@@ -196,15 +196,35 @@ enum PanelStyle {
     static let buttonSelectedFill = NSColor.controlAccentColor
     static let cornerRadius: CGFloat = 10
 
-    static func apply(to view: NSView, cornerRadius: CGFloat = PanelStyle.cornerRadius) {
+    /// Installs the animated background behind everything else in the panel. No shadow
+    /// and no corner radius: the fill fades out at its own edges, and a shadow needs an
+    /// edge to cast from.
+    @discardableResult
+    static func apply(
+        to view: NSView,
+        settings: SettingsStore,
+        cornerRadius: CGFloat = PanelStyle.cornerRadius
+    ) -> PanelBackgroundView {
         view.wantsLayer = true
-        view.layer?.backgroundColor = fill.cgColor
-        view.layer?.cornerRadius = cornerRadius
+        view.layer?.backgroundColor = NSColor.clear.cgColor
         view.layer?.borderWidth = 0
-        view.layer?.shadowColor = NSColor.black.cgColor
-        view.layer?.shadowOpacity = 0.4
-        view.layer?.shadowOffset = CGSize(width: 0, height: -2)
-        view.layer?.shadowRadius = 6
+        view.layer?.shadowOpacity = 0
+
+        let background = PanelBackgroundView(
+            style: settings.panelBackground,
+            cornerRadius: cornerRadius
+        )
+        view.addSubview(background, positioned: .below, relativeTo: nil)
+        // Pinned rather than autoresized: the panel is added at zero size and grows to fit
+        // its controls, and an autoresizing mask scales from the old size, which is zero.
+        background.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            background.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            background.topAnchor.constraint(equalTo: view.topAnchor),
+            background.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        return background
     }
 }
 
@@ -319,7 +339,7 @@ final class SelectionActionBar: NSView {
         // materials sample the (dark) desktop behind the window and came out mid-grey,
         // leaving the glyphs barely legible.
         appearance = NSAppearance(named: .aqua)
-        PanelStyle.apply(to: self)
+        PanelStyle.apply(to: self, settings: settings)
 
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -627,6 +647,9 @@ extension SelectionActionBar {
     /// Alpha of the fill each button actually draws, and of the panel behind them.
     var testButtonFillAlphas: [CGFloat] { allButtons.map(\.drawnFillAlpha) }
     var testPanelFillAlpha: CGFloat { layer?.backgroundColor?.alpha ?? 1 }
+    var testBackgroundFrame: CGRect? {
+        subviews.compactMap { $0 as? PanelBackgroundView }.first?.frame
+    }
     static var testPrimarySide: CGFloat { primarySide }
 }
 
@@ -950,7 +973,7 @@ final class CaptureOverlayView: NSView {
     private func showColorPalette() {
         guard let bar = actionBar, !bar.isHidden else { return }
 
-        let palette = ColorPaletteView(selected: currentColor) { [weak self] color in
+        let palette = ColorPaletteView(selected: currentColor, settings: settings) { [weak self] color in
             guard let self else { return }
             self.currentColor = color
             self.actionBar?.setColor(color)
@@ -1559,6 +1582,7 @@ final class CaptureOverlayView: NSView {
     }
     var testButtonFillAlphas: [CGFloat] { actionBar?.testButtonFillAlphas ?? [] }
     var testPanelFillAlpha: CGFloat { actionBar?.testPanelFillAlpha ?? 1 }
+    var testPanelBackgroundFrame: CGRect? { actionBar?.testBackgroundFrame }
     var testTool: OverlayTool { tool }
     var testActiveHint: String? { activeHint?.text }
     var testColorPaletteFrame: CGRect? { colorPalette?.frame }
