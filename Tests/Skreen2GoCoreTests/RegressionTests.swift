@@ -2195,14 +2195,41 @@ struct RegressionTests {
         #expect(written[1].lastPathComponent.contains(" 2."))
     }
 
-    @Test("Stale recordings from an earlier run are cleared out")
-    func stalePartialRecordingsArePurged() throws {
+    @Test("A truncated leftover is not mistaken for a finished recording")
+    func truncatedLeftoverIsNotPlayable() async throws {
         let temp = try RecordingFiles.temporaryURL()
-        try Data("leftover".utf8).write(to: temp)
-        #expect(FileManager.default.fileExists(atPath: temp.path))
+        defer { RecordingFiles.discard(temp) }
+        try Data("not really an mp4".utf8).write(to: temp)
 
-        RecordingFiles.purgeStaleRecordings()
+        // Compared by name: the temporary directory is reached through a symlink, so the
+        // two URLs describe the same file by different paths.
+        let names = RecordingFiles.staleRecordings().map(\.lastPathComponent)
+        #expect(names.contains(temp.lastPathComponent))
+        // An MPEG-4 only plays once its trailer is written, which is what separates a
+        // recording worth handing back from a stump worth deleting.
+        #expect(await RecordingFiles.isPlayable(temp) == false)
+
+        RecordingFiles.discard(temp)
         #expect(FileManager.default.fileExists(atPath: temp.path) == false)
+    }
+
+    @Test("A finished recording left behind is filed away rather than deleted")
+    func finishedLeftoverIsRecovered() async throws {
+        let root = try makeTestRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let harness = try makeRecordingHarness(root: root)
+
+        // Stand in for a run that finished the file and then died before filing it.
+        let orphan = try RecordingFiles.temporaryURL()
+        try Data("finished clip".utf8).write(to: orphan)
+
+        var saved: [URL] = []
+        harness.controller.onSaved = { saved.append($0) }
+
+        // Unplayable content is discarded, which is what this stand-in is.
+        await harness.controller.recoverStaleRecordings()
+        #expect(saved.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: orphan.path) == false)
     }
 
     // MARK: - Recording settings

@@ -1,3 +1,4 @@
+import AVFoundation
 import AppKit
 import CoreGraphics
 import Foundation
@@ -115,22 +116,34 @@ enum RecordingFiles {
         return folder.appendingPathComponent("\(id.uuidString).\(fileExtension)")
     }
 
-    /// Clears anything an earlier run left behind. Called at launch, where a leftover file
-    /// is certainly stale: a recording never outlives the process that made it.
-    static func purgeStaleRecordings(fileManager: FileManager = .default) {
+    /// Anything still here at launch is from a run that ended badly: a recording never
+    /// outlives the process that made it.
+    static func staleRecordings(fileManager: FileManager = .default) -> [URL] {
         let folder = fileManager.temporaryDirectory.appendingPathComponent(
             folderName,
             isDirectory: true
         )
-        guard let entries = try? fileManager.contentsOfDirectory(
+        let entries = (try? fileManager.contentsOfDirectory(
             at: folder,
             includingPropertiesForKeys: nil
-        ) else {
-            return
-        }
-        for entry in entries {
-            try? fileManager.removeItem(at: entry)
-        }
+        )) ?? []
+        return entries.filter { $0.pathExtension == fileExtension }
+    }
+
+    /// Whether a leftover file is a finished recording or a truncated write.
+    ///
+    /// The distinction matters: an MPEG-4 only plays once its trailer has been written, so
+    /// this is the difference between a video worth handing back to the user and a stump
+    /// worth deleting.
+    static func isPlayable(_ url: URL) async -> Bool {
+        let asset = AVURLAsset(url: url)
+        guard (try? await asset.load(.isPlayable)) == true else { return false }
+        guard let duration = try? await asset.load(.duration) else { return false }
+        return duration.seconds > 0
+    }
+
+    static func discard(_ url: URL, fileManager: FileManager = .default) {
+        try? fileManager.removeItem(at: url)
     }
 
     /// Moves the finished recording into the save folder, giving it the same kind of name

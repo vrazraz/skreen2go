@@ -199,8 +199,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.recordingController.start(request)
         }
         wireRecordingController()
-        // A file left in our container can only be from a run that did not finish.
-        RecordingFiles.purgeStaleRecordings()
+        // A recording an earlier run finished but never filed away is still the user's.
+        Task { @MainActor [weak self] in
+            await self?.recordingController.recoverStaleRecordings()
+        }
 
         hotKeyMonitor = HotKeyMonitor(settings: settings, combination: \.hotKey) { [weak self] in
             self?.startCapture()

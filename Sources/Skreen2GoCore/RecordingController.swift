@@ -237,6 +237,29 @@ final class RecordingController {
         }
     }
 
+    /// Hands back a recording an earlier run finished but never managed to file away.
+    ///
+    /// Deleting leftovers unseen was the easy thing to do and the wrong one: a finished
+    /// video the user never received is exactly what should survive a bad exit. Only a
+    /// truncated write is discarded.
+    func recoverStaleRecordings() async {
+        for url in RecordingFiles.staleRecordings() {
+            guard await RecordingFiles.isPlayable(url) else {
+                RecordingFiles.discard(url)
+                continue
+            }
+            do {
+                let saved = try await settings.withOutputFolderAccessAsync { folder in
+                    try RecordingFiles.move(url, into: folder, date: self.now())
+                }
+                onSaved?(saved)
+            } catch {
+                // Leave it where it is rather than destroying it; the next launch tries again.
+                continue
+            }
+        }
+    }
+
     /// Quitting mid-recording must still close the file: an MPEG-4 whose trailer was never
     /// written does not play at all.
     func finishBeforeTermination() async {

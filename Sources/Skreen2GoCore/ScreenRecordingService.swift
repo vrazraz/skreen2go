@@ -117,12 +117,23 @@ final class ScreenRecorder: ScreenRecording {
     /// Resumes exactly once, whichever of finish, failure or the watchdog arrives first —
     /// and holds onto the answer when it arrives before anyone is waiting.
     private func completeFinish(_ error: Error?) {
-        guard let continuation = finishContinuation else {
-            latchedFinish = .some(error)
+        if let continuation = finishContinuation {
+            finishContinuation = nil
+            continuation.resume(returning: error)
             return
         }
-        finishContinuation = nil
-        continuation.resume(returning: error)
+
+        latchedFinish = .some(error)
+
+        // Nobody asked for this. The encoder closed the file on its own because something
+        // else ended the capture — stopping it from the system's own recording indicator
+        // is the ordinary way that happens, and it turns out to arrive here rather than
+        // through `stream(_:didStopWithError:)`, which never fires for it. Left
+        // unhandled, the session sat in `recording` forever and a finished video was
+        // never moved out of the container.
+        guard isRecording else { return }
+        isRecording = false
+        onUnexpectedStop?(error)
     }
 
     private func handleStreamStopped(_ error: Error?) {
