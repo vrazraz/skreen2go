@@ -4,9 +4,7 @@
 "menu.quit" = "Quit";
 "menu.statusItem.tooltip" = "Skreen2Go — take a screenshot";
 "menu.record" = "Record Screen";
-"menu.recording.stop" = "Stop Recording";
 "menu.recording.reveal" = "Show Last Recording";
-"menu.statusItem.recording" = "Skreen2Go — recording, click to stop";
 
 /* Capture overlay */
 "overlay.hint.idle" = "Click — window   •   Drag — region   •   Esc — cancel";

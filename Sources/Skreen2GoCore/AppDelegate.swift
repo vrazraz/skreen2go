@@ -248,9 +248,6 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         recordingController.onStateChange = { [weak self] _ in
             self?.updateRecordingIndicator()
         }
-        recordingController.onElapsed = { [weak self] elapsed in
-            self?.updateRecordingIndicator(elapsed: elapsed)
-        }
         recordingController.onStarted = { [weak self] in
             guard let self else { return }
             // Shown whether or not confirmations are switched off: it is the only place
@@ -303,42 +300,15 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.activateFileViewerSelecting([lastRecordingURL])
     }
 
-    private func updateRecordingIndicator(elapsed: TimeInterval? = nil) {
-        if recordingController.isActive {
-            applyRecordingAppearance(elapsed: elapsed)
-        } else {
-            configureStatusItem()
-        }
-    }
-
-    /// While recording, the icon becomes a stop button that acts on the first click: the
-    /// menu is detached, because with one attached a click only opens it.
-    private func applyRecordingAppearance(elapsed: TimeInterval?) {
-        guard let statusItem, let button = statusItem.button else { return }
-
-        let image = NSImage(
-            systemSymbolName: "stop.circle.fill",
-            accessibilityDescription: "menu.recording.stop".localized("Stop Recording")
-        )
-        image?.isTemplate = true
-        button.image = image
-        button.contentTintColor = .systemRed
-        button.toolTip = "menu.statusItem.recording".localized("Skreen2Go — recording, click to stop")
-        button.title = elapsed.map { " " + Self.clock(for: $0) } ?? ""
-        button.imagePosition = .imageLeading
-        statusItem.length = NSStatusItem.variableLength
-        statusItem.menu = nil
-        button.target = self
-        button.action = #selector(stopRecordingFromStatusItem)
-    }
-
-    @objc private func stopRecordingFromStatusItem() {
-        recordingController.stopOrCancel()
-    }
-
-    private static func clock(for elapsed: TimeInterval) -> String {
-        let total = Int(elapsed)
-        return String(format: "%d:%02d", total / 60, total % 60)
+    /// macOS puts its own indicator in the menu bar for as long as anything is capturing
+    /// the screen — it cannot be suppressed, and clicking it stops the capture. Ours would
+    /// be a second stop button standing right next to it, so it steps aside for the
+    /// duration and comes back when the recording is over.
+    ///
+    /// Stopping through the system indicator is not merely a hard stop: it ends our stream,
+    /// which reaches `onUnexpectedStop` and finishes the file exactly as our own stop does.
+    private func updateRecordingIndicator() {
+        statusItem?.isVisible = !recordingController.isActive
     }
 
     private func configureStatusItem() {
@@ -388,11 +358,8 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         statusItem.menu = menu
-
         // A language change rebuilds the item from scratch, which can happen mid-session.
-        if recordingController.isActive {
-            applyRecordingAppearance(elapsed: nil)
-        }
+        statusItem.isVisible = !recordingController.isActive
     }
 
     private func presentEditor(image: NSImage, selectionFrame: CGRect, annotations: [Annotation]) {

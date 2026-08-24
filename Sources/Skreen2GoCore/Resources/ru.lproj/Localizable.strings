@@ -4,9 +4,7 @@
 "menu.quit" = "Закрыть";
 "menu.statusItem.tooltip" = "Skreen2Go — сделать скриншот";
 "menu.record" = "Записать экран";
-"menu.recording.stop" = "Остановить запись";
 "menu.recording.reveal" = "Показать последнюю запись";
-"menu.statusItem.recording" = "Skreen2Go — идёт запись, клик останавливает";
 
 /* Capture overlay */
 "overlay.hint.idle" = "Клик — окно   •   Перетащите мышью — область   •   Esc — отмена";

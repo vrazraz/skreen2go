@@ -43,8 +43,7 @@ final class RecordingTicker: RecordingTicking {
     func start(interval: TimeInterval, onTick: @escaping () -> Void) {
         stop()
         // `.common` matters: in the default mode an open menu stops the run loop from
-        // firing timers, which would freeze the countdown and the elapsed clock exactly
-        // when the user is reaching for the menu bar to stop the recording.
+        // firing timers, which would leave the countdown frozen behind it.
         let timer = Timer(timeInterval: interval, repeats: true) { _ in
             Task { @MainActor in onTick() }
         }
@@ -74,7 +73,6 @@ final class RecordingController {
     var onSaved: ((URL) -> Void)?
     var onNotice: ((RecordingNotice) -> Void)?
     var onError: ((String) -> Void)?
-    var onElapsed: ((TimeInterval) -> Void)?
 
     private(set) var state: RecordingState = .idle {
         didSet {
@@ -96,7 +94,6 @@ final class RecordingController {
     private let now: () -> Date
 
     private var pendingPlan: RecordingPlan?
-    private var elapsedSeconds: TimeInterval = 0
 
     init(
         settings: SettingsStore = .shared,
@@ -177,10 +174,7 @@ final class RecordingController {
             countdown.update(seconds: remaining - 1)
         case .countdown:
             beginRecording()
-        case .recording:
-            elapsedSeconds += 1
-            onElapsed?(elapsedSeconds)
-        case .idle, .finalising:
+        case .idle, .recording, .finalising:
             ticker.stop()
         }
     }
@@ -210,7 +204,9 @@ final class RecordingController {
             do {
                 let url = try RecordingFiles.temporaryURL()
                 try await recorder.start(plan, writingTo: url)
-                elapsedSeconds = 0
+                // Nothing left to count: the menu bar indicator during a recording is the
+                // system's, not ours.
+                ticker.stop()
                 state = .recording
                 onStarted?()
             } catch {

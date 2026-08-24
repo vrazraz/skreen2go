@@ -26,6 +26,12 @@ final class ScreenRecorder: ScreenRecording {
     private var recordingOutput: SCRecordingOutput?
     private var outputURL: URL?
     private var finishContinuation: CheckedContinuation<Error?, Never>?
+    /// The encoder's verdict when it arrives before anyone is waiting for it. That is the
+    /// normal order when the system ends the stream — through its own recording indicator,
+    /// say — because we only start waiting after the delegate has already told us. Without
+    /// somewhere to put it the signal was dropped and the watchdog failed a recording that
+    /// had in fact finished perfectly well.
+    private var latchedFinish: Error??
 
     init() {
         proxy.onFinished = { [weak self] error in
@@ -38,6 +44,7 @@ final class ScreenRecorder: ScreenRecording {
 
     func start(_ plan: RecordingPlan, writingTo url: URL) async throws {
         guard !isRecording else { throw RecordingError.alreadyRunning }
+        latchedFinish = nil
 
         let content = try await shareableContent()
         let filter = try contentFilter(for: plan, in: content)
@@ -88,6 +95,11 @@ final class ScreenRecorder: ScreenRecording {
     // MARK: - Delegate plumbing
 
     private func waitForFinish() async -> Error? {
+        if let latched = latchedFinish {
+            latchedFinish = nil
+            return latched
+        }
+
         let watchdog = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(Self.finishTimeout * 1_000_000_000))
             guard !Task.isCancelled else { return }
@@ -102,9 +114,13 @@ final class ScreenRecorder: ScreenRecording {
         }
     }
 
-    /// Resumes exactly once, whichever of finish, failure or the watchdog arrives first.
+    /// Resumes exactly once, whichever of finish, failure or the watchdog arrives first —
+    /// and holds onto the answer when it arrives before anyone is waiting.
     private func completeFinish(_ error: Error?) {
-        guard let continuation = finishContinuation else { return }
+        guard let continuation = finishContinuation else {
+            latchedFinish = .some(error)
+            return
+        }
         finishContinuation = nil
         continuation.resume(returning: error)
     }
