@@ -1062,12 +1062,15 @@ struct RegressionTests {
                 hints.insert(hint)
             }
         }
-        // Eleven controls: three tools, colour, undo, redo, settings, copy, save,
-        // save-as, cancel.
-        #expect(hints.count == 11, "found hints: \(hints.sorted())")
+        // Fourteen controls: three tools, colour, undo, redo, settings, record, system
+        // audio, microphone, copy, save, save-as, cancel.
+        #expect(hints.count == 14, "found hints: \(hints.sorted())")
         #expect(hints.contains("tool.arrow".localized("Arrow")))
         #expect(hints.contains("tool.color".localized("Color")))
         #expect(hints.contains("tool.settings".localized("Settings")))
+        #expect(hints.contains("tool.record".localized("Record video")))
+        #expect(hints.contains("tool.audio.system".localized("System audio")))
+        #expect(hints.contains("tool.audio.microphone".localized("Microphone")))
     }
 
     @Test("Hovering a control makes its hint the active one")
@@ -2666,5 +2669,49 @@ struct RegressionTests {
         #expect(harness.controller.state == .idle)
         let saved = try FileManager.default.contentsOfDirectory(atPath: harness.outputFolder.path)
         #expect(saved.contains { $0.hasSuffix(".mp4") })
+    }
+
+    // MARK: - Recording reaches the session, not the capture pipeline
+
+    @Test("Pressing record hands the selection to the recording session")
+    func recordActionStartsARecording() {
+        let controller = CaptureController(settings: makeSettings())
+        var requests: [RecordingRequest] = []
+        var captured = 0
+        controller.onStartRecording = { requests.append($0) }
+        controller.onImageCaptured = { _, _, _ in captured += 1 }
+
+        let generationBefore = controller.testCaptureGeneration
+        let area = CGRect(x: 40, y: 60, width: 320, height: 180)
+        controller.testPerform(.record, payload: SelectionCapture(
+            area: area,
+            annotations: [],
+            window: nil
+        ))
+
+        #expect(requests.count == 1)
+        #expect(requests.first?.area == area)
+        #expect(requests.first?.windowID == nil)
+        #expect(captured == 0, "recording must not open the still editor")
+        // The generation counter exists to discard a stale screenshot; a recording has no
+        // business bumping it, and no capture task should be left running.
+        #expect(controller.testCaptureGeneration == generationBefore)
+        #expect(controller.testHasCaptureInFlight == false)
+    }
+
+    @Test("Recording a window passes the window through, not just its frame")
+    func recordActionKeepsTheWindow() {
+        let controller = CaptureController(settings: makeSettings())
+        var requests: [RecordingRequest] = []
+        controller.onStartRecording = { requests.append($0) }
+
+        let frame = CGRect(x: 10, y: 20, width: 800, height: 600)
+        controller.testPerform(.record, payload: SelectionCapture(
+            area: frame,
+            annotations: [],
+            window: WindowInfo(id: 99, frame: frame, ownerName: "Finder", title: "Downloads")
+        ))
+
+        #expect(requests.first?.windowID == 99)
     }
 }

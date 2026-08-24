@@ -3,6 +3,10 @@
 "menu.settings" = "Settings…";
 "menu.quit" = "Quit";
 "menu.statusItem.tooltip" = "Skreen2Go — take a screenshot";
+"menu.record" = "Record Screen";
+"menu.recording.stop" = "Stop Recording";
+"menu.recording.reveal" = "Show Last Recording";
+"menu.statusItem.recording" = "Skreen2Go — recording, click to stop";
 
 /* Capture overlay */
 "overlay.hint.idle" = "Click — window   •   Drag — region   •   Esc — cancel";
@@ -26,6 +30,9 @@
 "tool.save.default" = "Save to the default folder";
 "tool.saveAs" = "Save As…";
 "tool.cancel" = "Cancel (Esc)";
+"tool.record" = "Record video";
+"tool.audio.system" = "System audio";
+"tool.audio.microphone" = "Microphone";
 
 /* Visual cursor */
 "cursor.menu" = "Cursor";
@@ -71,6 +78,10 @@
 
 /* Recording */
 "recording.countdown.caption" = "Recording starts in…";
+"recording.notice.title" = "Recording";
+"recording.started.title" = "Recording";
+"recording.started.detail" = "Press %@ to stop";
+"recording.saved.title" = "Recording saved";
 "recording.notice.singleDisplay" = "Video records one display, so the selection was trimmed.";
 "recording.notice.microphoneUnavailable" = "No microphone access — recording without it.";
 
@@ -93,6 +104,7 @@
 "error.hotKey.title" = "Hot key not registered";
 "error.hotKey.body" = "The combination %1$@ could not be assigned (error %2$d). That usually means macOS or another app already owns it.\nPick a different combination in Skreen2Go settings — screenshots are still available from the menu bar icon.";
 "error.recording.alreadyRunning" = "A recording is already running.";
+"error.recording.title" = "Could not record the screen";
 "error.recording.notRunning" = "No recording is running.";
 "error.recording.selectionTooSmall" = "The selected region is too small to record.";
 "error.recording.startFailed" = "Could not start the recording: %@";

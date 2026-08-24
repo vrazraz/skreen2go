@@ -3,6 +3,10 @@
 "menu.settings" = "Настройки…";
 "menu.quit" = "Закрыть";
 "menu.statusItem.tooltip" = "Skreen2Go — сделать скриншот";
+"menu.record" = "Записать экран";
+"menu.recording.stop" = "Остановить запись";
+"menu.recording.reveal" = "Показать последнюю запись";
+"menu.statusItem.recording" = "Skreen2Go — идёт запись, клик останавливает";
 
 /* Capture overlay */
 "overlay.hint.idle" = "Клик — окно   •   Перетащите мышью — область   •   Esc — отмена";
@@ -26,6 +30,9 @@
 "tool.save.default" = "Сохранить в папку по умолчанию";
 "tool.saveAs" = "Сохранить как…";
 "tool.cancel" = "Отмена (Esc)";
+"tool.record" = "Записать видео";
+"tool.audio.system" = "Звук системы";
+"tool.audio.microphone" = "Микрофон";
 
 /* Visual cursor */
 "cursor.menu" = "Курсор";
@@ -71,6 +78,10 @@
 
 /* Recording */
 "recording.countdown.caption" = "Запись начнётся через…";
+"recording.notice.title" = "Запись";
+"recording.started.title" = "Идёт запись";
+"recording.started.detail" = "%@ — остановить";
+"recording.saved.title" = "Запись сохранена";
 "recording.notice.singleDisplay" = "Видео записывается с одного экрана, поэтому выделение обрезано.";
 "recording.notice.microphoneUnavailable" = "Нет доступа к микрофону — запись идёт без него.";
 
@@ -93,6 +104,7 @@
 "error.hotKey.title" = "Горячая клавиша не зарегистрирована";
 "error.hotKey.body" = "Комбинацию %1$@ не удалось назначить (код ошибки %2$d). Обычно это значит, что её уже занимает macOS или другое приложение.\nВыберите другую комбинацию в настройках Skreen2Go — снимок экрана по-прежнему доступен через иконку в menu bar.";
 "error.recording.alreadyRunning" = "Запись уже идёт.";
+"error.recording.title" = "Не удалось записать экран";
 "error.recording.notRunning" = "Запись не идёт.";
 "error.recording.selectionTooSmall" = "Выделенная область слишком мала для записи.";
 "error.recording.startFailed" = "Не удалось начать запись: %@";

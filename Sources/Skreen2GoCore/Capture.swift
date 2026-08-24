@@ -10,6 +10,8 @@ enum SelectionAction: Equatable {
     case copy
     case save
     case saveAs
+    /// Record the selection as video instead of capturing a still.
+    case record
     case cancel
 }
 
@@ -188,6 +190,11 @@ final class SelectionActionBar: NSView {
 
     private let colorButton = NSButton(title: "", target: nil, action: nil)
     private var toolButtons: [(button: NSButton, tool: OverlayTool)] = []
+    /// Audio sources for the next recording. Kept apart from `toolButtons`, whose states
+    /// are driven by the active annotation tool.
+    private var systemAudioButton: NSButton?
+    private var microphoneButton: NSButton?
+    private let settings: SettingsStore
     /// Hint text per control. Native tooltips are useless here: they open in a window at
     /// an ordinary level, which the `.screenSaver`-level overlay covers, so the overlay
     /// draws its own hints instead.
@@ -195,12 +202,14 @@ final class SelectionActionBar: NSView {
 
     init(
         color: NSColor,
+        settings: SettingsStore,
         onTool: @escaping (OverlayTool) -> Void,
         onColorRequest: @escaping () -> Void,
         onUndo: @escaping () -> Void,
         onRedo: @escaping () -> Void,
         onAction: @escaping (SelectionAction) -> Void
     ) {
+        self.settings = settings
         self.onTool = onTool
         self.onColorRequest = onColorRequest
         self.onUndo = onUndo
@@ -257,7 +266,29 @@ final class SelectionActionBar: NSView {
 
         stack.addArrangedSubview(button("arrow.uturn.backward", "tool.undo".localized("Undo (⌘Z)"), #selector(undo)))
         stack.addArrangedSubview(button("arrow.uturn.forward", "tool.redo".localized("Redo (⇧⌘Z)"), #selector(redo)))
-        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(settings)))
+        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
+
+        stack.addArrangedSubview(separator())
+        stack.addArrangedSubview(button("record.circle", "tool.record".localized("Record video"), #selector(record)))
+        // The two audio sources sit next to the record button so the choice is made in the
+        // same glance as the decision to record, and they persist between sessions.
+        let systemAudio = audioToggle(
+            "speaker.wave.2",
+            "tool.audio.system".localized("System audio"),
+            isOn: settings.recordsSystemAudio,
+            #selector(toggleSystemAudio)
+        )
+        systemAudioButton = systemAudio
+        stack.addArrangedSubview(systemAudio)
+        let microphone = audioToggle(
+            "mic",
+            "tool.audio.microphone".localized("Microphone"),
+            isOn: settings.recordsMicrophone,
+            #selector(toggleMicrophone)
+        )
+        microphoneButton = microphone
+        stack.addArrangedSubview(microphone)
+
         stack.addArrangedSubview(separator())
         stack.addArrangedSubview(button("doc.on.doc", "tool.copy".localized("Copy"), #selector(copyShot)))
         stack.addArrangedSubview(button("square.and.arrow.down", "tool.save".localized("Save"), #selector(save)))
@@ -328,6 +359,13 @@ final class SelectionActionBar: NSView {
         return button
     }
 
+    private func audioToggle(_ symbol: String, _ title: String, isOn: Bool, _ action: Selector) -> NSButton {
+        let button = self.button(symbol, title, action)
+        button.setButtonType(.pushOnPushOff)
+        button.state = isOn ? .on : .off
+        return button
+    }
+
     private func separator() -> NSView {
         let separator = NSBox(frame: .zero)
         separator.boxType = .separator
@@ -349,7 +387,24 @@ final class SelectionActionBar: NSView {
     @objc private func colorTapped() { onColorRequest() }
     @objc private func undo() { onUndo() }
     @objc private func redo() { onRedo() }
-    @objc private func settings() { onAction(.settings) }
+    @objc private func openSettings() { onAction(.settings) }
+    @objc private func record() { onAction(.record) }
+
+    @objc private func toggleSystemAudio(_ sender: NSButton) {
+        settings.recordsSystemAudio = sender.state == .on
+    }
+
+    @objc private func toggleMicrophone(_ sender: NSButton) {
+        settings.recordsMicrophone = sender.state == .on
+    }
+
+    /// Settings can change the toggles behind the bar's back, so they are re-read whenever
+    /// the settings window closes.
+    func refreshAudioToggles() {
+        systemAudioButton?.state = settings.recordsSystemAudio ? .on : .off
+        microphoneButton?.state = settings.recordsMicrophone ? .on : .off
+    }
+
     @objc private func copyShot() { onAction(.copy) }
     @objc private func save() { onAction(.save) }
     @objc private func saveAs() { onAction(.saveAs) }
@@ -469,6 +524,7 @@ final class CaptureOverlayView: NSView {
         } else {
             let created = SelectionActionBar(
                 color: currentColor,
+                settings: settings,
                 onTool: { [weak self] tool in self?.setTool(tool) },
                 onColorRequest: { [weak self] in self?.toggleColorPalette() },
                 onUndo: { [weak self] in self?.undo() },
@@ -1325,6 +1381,9 @@ final class CaptureController {
     /// Shows the settings window. Owned by the app delegate, which keeps a single
     /// instance; the flag it is passed lifts the window above the overlay.
     var onShowSettings: (() -> Void)?
+    /// Hands the selection to the recording session, which outlives this controller's
+    /// overlay.
+    var onStartRecording: ((RecordingRequest) -> Void)?
 
     init(settings: SettingsStore = .shared, capture: (any ScreenshotCapturing)? = nil) {
         self.settings = settings
@@ -1542,6 +1601,16 @@ final class CaptureController {
             // Settings leaves the frame and its annotations exactly where they are.
             presentSettings()
             return
+        case .record:
+            // Recording takes over from here and outlives the overlay by minutes, so it
+            // deliberately misses `runCapture` and its generation counter — that machinery
+            // exists to discard a stale still, and has nothing to say about a session.
+            dismissOverlay()
+            onStartRecording?(RecordingRequest(
+                area: payload.area,
+                windowID: payload.window?.id
+            ))
+            return
         default:
             break
         }
@@ -1571,7 +1640,7 @@ final class CaptureController {
                     self.save(image, annotations: annotations)
                 case .saveAs:
                     self.saveAs(image, annotations: annotations)
-                case .cancel, .settings:
+                case .cancel, .settings, .record:
                     break
                 }
             }

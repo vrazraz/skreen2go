@@ -30,6 +30,22 @@ enum ScreenshotOutcome: Equatable {
     }
 }
 
+/// Background of the toast panel. A plain `NSVisualEffectView` swallows the click without
+/// telling anyone, so the one case that needs a target gets it here.
+private final class ToastBackgroundView: NSVisualEffectView {
+    var onClick: (() -> Void)?
+
+    override func mouseUp(with event: NSEvent) {
+        onClick?()
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard window?.ignoresMouseEvents == false else { return }
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+}
+
 /// The app's one and only confirmation banner. `UNUserNotificationCenter` is not used:
 /// authorisation may be missing, Do Not Disturb swallows banners, and macOS suppresses
 /// them entirely while the posting app is frontmost — which is exactly the moment a
@@ -49,6 +65,8 @@ final class ToastPresenter {
     private var detailLabel: NSTextField?
     private var iconView: NSImageView?
     private var dismissWorkItem: DispatchWorkItem?
+    /// Set only while the toast on screen has somewhere to take a click.
+    fileprivate var clickHandler: (() -> Void)?
 
     private init() {}
 
@@ -57,7 +75,24 @@ final class ToastPresenter {
     }
 
     func show(title: String, detail: String, symbolName: String) {
+        show(title: title, detail: detail, symbolName: symbolName, duration: Self.visibleDuration)
+    }
+
+    /// - Parameter onClick: makes the toast a target. Only pass one when the click has
+    ///   somewhere useful to go, and give it a longer `duration` — the default 1.9s is an
+    ///   unfairly small target to hit.
+    func show(
+        title: String,
+        detail: String,
+        symbolName: String,
+        duration: TimeInterval,
+        onClick: (() -> Void)? = nil
+    ) {
         let panel = ensurePanel()
+        // The panel is created once and reused, so the handler has to be replaced on every
+        // show — otherwise the next toast inherits this one's click target.
+        clickHandler = onClick
+        panel.ignoresMouseEvents = onClick == nil
         label?.stringValue = title
         detailLabel?.stringValue = detail
         detailLabel?.isHidden = detail.isEmpty
@@ -86,10 +121,20 @@ final class ToastPresenter {
 
         let work = DispatchWorkItem { [weak self] in self?.fadeOut() }
         dismissWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.visibleDuration, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    fileprivate func handleClick() {
+        guard let handler = clickHandler else { return }
+        clickHandler = nil
+        dismissWorkItem?.cancel()
+        fadeOut()
+        handler()
     }
 
     private func fadeOut() {
+        clickHandler = nil
+        panel?.ignoresMouseEvents = true
         guard let panel else { return }
         let target = panel.frame.offsetBy(dx: 0, dy: Self.slideDistance)
         NSAnimationContext.runAnimationGroup { context in
@@ -134,10 +179,12 @@ final class ToastPresenter {
         panel.isReleasedWhenClosed = false
         // NSPanel would otherwise hide itself the moment focus moves on.
         panel.hidesOnDeactivate = false
-        // Purely informational: it must never intercept a click.
+        // Informational by default, and then it must never intercept a click. `show`
+        // re-opens it only for the toasts that carry an action.
         panel.ignoresMouseEvents = true
 
-        let background = NSVisualEffectView()
+        let background = ToastBackgroundView()
+        background.onClick = { [weak self] in self?.handleClick() }
         background.material = .hudWindow
         background.blendingMode = .behindWindow
         background.state = .active
