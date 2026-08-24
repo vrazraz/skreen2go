@@ -11,6 +11,7 @@ struct RecordingRequest: Equatable {
 
 enum RecordingError: LocalizedError {
     case alreadyRunning
+    case notRunning
     case selectionTooSmall
     case displayUnavailable
     case windowUnavailable
@@ -23,6 +24,8 @@ enum RecordingError: LocalizedError {
         switch self {
         case .alreadyRunning:
             return "error.recording.alreadyRunning".localized("A recording is already running.")
+        case .notRunning:
+            return "error.recording.notRunning".localized("No recording is running.")
         case .selectionTooSmall:
             return "error.recording.selectionTooSmall".localized(
                 "The selected region is too small to record."

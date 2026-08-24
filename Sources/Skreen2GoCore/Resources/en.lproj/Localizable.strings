@@ -88,6 +88,7 @@
 "error.hotKey.title" = "Hot key not registered";
 "error.hotKey.body" = "The combination %1$@ could not be assigned (error %2$d). That usually means macOS or another app already owns it.\nPick a different combination in Skreen2Go settings — screenshots are still available from the menu bar icon.";
 "error.recording.alreadyRunning" = "A recording is already running.";
+"error.recording.notRunning" = "No recording is running.";
 "error.recording.selectionTooSmall" = "The selected region is too small to record.";
 "error.recording.startFailed" = "Could not start the recording: %@";
 "error.recording.writeFailed" = "Could not save the recording: %@";
