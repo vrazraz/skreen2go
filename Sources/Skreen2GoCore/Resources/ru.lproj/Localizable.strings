@@ -59,13 +59,6 @@
 "settings.language" = "Язык интерфейса";
 "settings.language.system" = "Системный";
 "settings.color" = "Цвет по умолчанию";
-"settings.panelBackground" = "Фон панели";
-"panelBackground.liquidGlass" = "Жидкое стекло";
-"panelBackground.glow" = "Светящаяся рамка";
-"panelBackground.smoke" = "Завихрения дыма";
-"panelBackground.glass" = "Живое стекло";
-"panelBackground.blobs" = "Дрейфующие пятна";
-"panelBackground.plasma" = "Плазма";
 "settings.section.stroke" = "Стрелка и рамка";
 "settings.thickness" = "Толщина";
 "settings.opacity" = "Прозрачность";

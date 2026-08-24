@@ -1235,36 +1235,22 @@ struct RegressionTests {
 
     @Test("The animated background covers the whole panel")
     func panelBackgroundFillsThePanel() throws {
-        for style in PanelBackgroundStyle.allCases {
-            let settings = makeSettings()
-            settings.panelBackground = style
-            let overlay = CaptureOverlayView(
-                frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
-                settings: settings,
-                mode: .screenshot
-            )
-            overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
-            overlay.testShowActionBar()
-            overlay.testLayoutActionBar()
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
 
-            let bar = try #require(overlay.testActionBarFrame)
-            let background = try #require(overlay.testPanelBackgroundFrame, "\(style) has no background")
-            // The panel is built at zero size and grows to fit its controls; the
-            // background has to grow with it rather than stay where it started.
-            #expect(isClose(background.width, bar.width), "\(style) background is \(background.width) wide")
-            #expect(isClose(background.height, bar.height))
-        }
+        let bar = try #require(overlay.testActionBarFrame)
+        let background = try #require(overlay.testPanelBackgroundFrame)
+        // The panel is built at zero size and grows to fit its controls; the background
+        // has to grow with it rather than stay where it started.
+        #expect(isClose(background.width, bar.width))
+        #expect(isClose(background.height, bar.height))
     }
 
     @Test("The glow is really blurred, not just faded")
     func glowCarriesARealBlur() throws {
-        let settings = makeSettings()
-        settings.panelBackground = .glow
-        let overlay = CaptureOverlayView(
-            frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
-            settings: settings,
-            mode: .screenshot
-        )
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
         overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
         overlay.testShowActionBar()
         overlay.testLayoutActionBar()
@@ -1278,13 +1264,7 @@ struct RegressionTests {
 
     @Test("Reaching for the panel takes the lit edge away")
     func hoverFadesTheGlowingEdge() throws {
-        let settings = makeSettings()
-        settings.panelBackground = .glow
-        let overlay = CaptureOverlayView(
-            frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
-            settings: settings,
-            mode: .screenshot
-        )
+        let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
         overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
         overlay.testShowActionBar()
         overlay.testLayoutActionBar()
@@ -1304,18 +1284,6 @@ struct RegressionTests {
         #expect(background.testGlowOpacity > 0)
         #expect(background.testRimOpacity > 0)
         #expect(background.testRimIsTurning)
-    }
-
-    @Test("The panel background style round-trips and resets")
-    func panelBackgroundSettingRoundTrips() {
-        let settings = makeSettings()
-        #expect(settings.panelBackground == .liquidGlass)
-
-        settings.panelBackground = .plasma
-        #expect(settings.panelBackground == .plasma)
-
-        settings.reset()
-        #expect(settings.panelBackground == .liquidGlass)
     }
 
     @Test("The colour button matches its neighbours and says it opens a palette")

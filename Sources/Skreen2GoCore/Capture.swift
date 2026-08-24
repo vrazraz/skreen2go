@@ -92,12 +92,12 @@ final class ColorPaletteView: NSView {
     private let onPick: (NSColor) -> Void
     private var swatches: [(button: NSButton, color: NSColor)] = []
 
-    init(selected: NSColor, settings: SettingsStore, onPick: @escaping (NSColor) -> Void) {
+    init(selected: NSColor, onPick: @escaping (NSColor) -> Void) {
         self.onPick = onPick
         super.init(frame: .zero)
 
         appearance = NSAppearance(named: .aqua)
-        PanelStyle.apply(to: self, settings: settings, cornerRadius: 8)
+        PanelStyle.apply(to: self, cornerRadius: 8)
 
         let rows = stride(from: 0, to: Self.colors.count, by: Self.columns).map { start in
             let slice = Self.colors[start..<min(start + Self.columns, Self.colors.count)]
@@ -183,10 +183,6 @@ final class ColorPaletteView: NSView {
 /// tools on the left, then colour, undo/redo, and the terminal actions.
 /// The look shared by the floating panels over the dimmed screen.
 enum PanelStyle {
-    /// Translucent rather than solid, so the panel reads as floating above the shot
-    /// rather than as part of it. No border: the shadow already separates it from the
-    /// backdrop, and an outline on a translucent fill only muddies the edge.
-    static let fill = NSColor(white: 0.97, alpha: 0.72)
     /// Nearly black, not the system default grey, so glyphs hold up against a fill you
     /// can see through.
     static let icon = NSColor(white: 0.12, alpha: 1)
@@ -202,7 +198,6 @@ enum PanelStyle {
     @discardableResult
     static func apply(
         to view: NSView,
-        settings: SettingsStore,
         cornerRadius: CGFloat = PanelStyle.cornerRadius
     ) -> PanelBackgroundView {
         view.wantsLayer = true
@@ -210,10 +205,7 @@ enum PanelStyle {
         view.layer?.borderWidth = 0
         view.layer?.shadowOpacity = 0
 
-        let background = PanelBackgroundView(
-            style: settings.panelBackground,
-            cornerRadius: cornerRadius
-        )
+        let background = PanelBackgroundView(cornerRadius: cornerRadius)
         view.addSubview(background, positioned: .below, relativeTo: nil)
         // Pinned rather than autoresized: the panel is added at zero size and grows to fit
         // its controls, and an autoresizing mask scales from the old size, which is zero.
@@ -359,7 +351,7 @@ final class SelectionActionBar: NSView {
         // materials sample the (dark) desktop behind the window and came out mid-grey,
         // leaving the glyphs barely legible.
         appearance = NSAppearance(named: .aqua)
-        PanelStyle.apply(to: self, settings: settings)
+        PanelStyle.apply(to: self)
 
         let stack = NSStackView()
         stack.orientation = .horizontal
@@ -1033,7 +1025,7 @@ final class CaptureOverlayView: NSView {
     private func showColorPalette() {
         guard let bar = actionBar, !bar.isHidden else { return }
 
-        let palette = ColorPaletteView(selected: currentColor, settings: settings) { [weak self] color in
+        let palette = ColorPaletteView(selected: currentColor) { [weak self] color in
             guard let self else { return }
             self.currentColor = color
             self.actionBar?.setColor(color)

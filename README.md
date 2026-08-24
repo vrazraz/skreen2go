@@ -6,17 +6,8 @@
 
 ## Требования
 
-- macOS 15+ для запуска
-- Xcode 26 для сборки: фон панели использует `NSGlassEffectView`, появившийся в SDK macOS 26. Сам класс вызывается под проверкой доступности, поэтому приложение по-прежнему работает на macOS 15, но компилировать его нужно против SDK, который об этом классе знает
-- Swift 6.1+ (манифест SwiftPM использует формат 5.9)
-
-Если активен SDK от Command Line Tools, сборка упадёт на `NSGlassEffectView`. Направьте её на Xcode:
-
-```sh
-export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-```
-
-`Scripts/build-app.sh` делает это сам и проверяет версию SDK.
+- macOS 15+
+- Swift 6.1+ (манифест SwiftPM использует формат 5.9; для universal/App Store-сборки нужен Xcode)
 
 ## Сборка и запуск
 

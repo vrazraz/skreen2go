@@ -95,7 +95,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private var boldCheckbox: NSButton!
     private var launchCheckbox: NSButton!
     private var notificationCheckbox: NSButton!
-    private var panelBackgroundPopup: NSPopUpButton!
     private var recordingHotKeyButton: NSButton!
     private var recordingCursorCheckbox: NSButton!
     private var recordingClicksCheckbox: NSButton!
@@ -236,17 +235,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         colorWell.action = #selector(colorChanged(_:))
         stack.addArrangedSubview(row(label: "settings.color".localized("Default color"), control: colorWell))
 
-        panelBackgroundPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-        for style in PanelBackgroundStyle.allCases {
-            panelBackgroundPopup.addItem(withTitle: style.title)
-            panelBackgroundPopup.lastItem?.representedObject = style.rawValue
-        }
-        panelBackgroundPopup.target = self
-        panelBackgroundPopup.action = #selector(panelBackgroundChanged(_:))
-        stack.addArrangedSubview(row(
-            label: "settings.panelBackground".localized("Panel background"),
-            control: panelBackgroundPopup
-        ))
 
         let strokeTitle = NSTextField(labelWithString: "settings.section.stroke".localized("Arrow and rectangle"))
         strokeTitle.font = .boldSystemFont(ofSize: 14)
@@ -324,7 +312,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         folderField.stringValue = settings.outputFolderURL.path
         formatPopup.selectItem(withTitle: settings.outputFormat.rawValue)
         selectLanguage(settings.interfaceLanguage)
-        selectPanelBackground(settings.panelBackground)
         colorWell.color = settings.defaultColor
         strokeThicknessSlider.doubleValue = Double(settings.strokeThickness)
         strokeOpacitySlider.doubleValue = Double(settings.strokeOpacity)
@@ -505,19 +492,6 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     @objc private func blurChanged(_ sender: NSSlider) { settings.blurRadius = CGFloat(sender.doubleValue) }
     @objc private func textBoldChanged(_ sender: NSButton) { settings.textBold = sender.state == .on }
     @objc private func notificationsChanged(_ sender: NSButton) { settings.showNotifications = sender.state == .on }
-    private func selectPanelBackground(_ style: PanelBackgroundStyle) {
-        let index = panelBackgroundPopup.itemArray.firstIndex {
-            ($0.representedObject as? String) == style.rawValue
-        }
-        panelBackgroundPopup.selectItem(at: index ?? 0)
-    }
-
-    @objc private func panelBackgroundChanged(_ sender: NSPopUpButton) {
-        guard let raw = sender.selectedItem?.representedObject as? String,
-              let style = PanelBackgroundStyle(rawValue: raw) else { return }
-        settings.panelBackground = style
-    }
-
     @objc private func recordingCursorChanged(_ sender: NSButton) { settings.showsCursorInRecording = sender.state == .on }
     @objc private func recordingClicksChanged(_ sender: NSButton) { settings.showsClicksInRecording = sender.state == .on }
 

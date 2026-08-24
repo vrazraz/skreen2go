@@ -59,13 +59,6 @@
 "settings.language" = "Language";
 "settings.language.system" = "System";
 "settings.color" = "Default color";
-"settings.panelBackground" = "Panel background";
-"panelBackground.liquidGlass" = "Liquid Glass";
-"panelBackground.glow" = "Glowing edge";
-"panelBackground.smoke" = "Curling smoke";
-"panelBackground.glass" = "Live glass";
-"panelBackground.blobs" = "Drifting blobs";
-"panelBackground.plasma" = "Plasma";
 "settings.section.stroke" = "Arrow and rectangle";
 "settings.thickness" = "Thickness";
 "settings.opacity" = "Opacity";
