@@ -552,6 +552,12 @@ final class CaptureOverlayView: NSView {
         colorPalette?.setSelected(currentColor)
     }
 
+    /// Resetting settings from the gear button turns both audio sources off, which would
+    /// otherwise leave the panel showing them as still on.
+    func adoptAudioSettings() {
+        actionBar?.refreshAudioToggles()
+    }
+
     private func setTool(_ tool: OverlayTool) {
         commitTextIfNeeded()
         self.tool = tool
@@ -1549,6 +1555,7 @@ final class CaptureController {
         if !ColorPaletteView.sameColor(colorBefore, settings.defaultColor) {
             overlayView?.adoptDefaultColor()
         }
+        overlayView?.adoptAudioSettings()
     }
 
     private func abandonCaptureInFlight() {

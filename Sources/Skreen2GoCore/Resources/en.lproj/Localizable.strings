@@ -70,6 +70,10 @@
 "settings.blurRadius" = "Intensity";
 "settings.launchAtLogin" = "Launch at login";
 "settings.showNotifications" = "Show notifications";
+"settings.section.recording" = "Video recording";
+"settings.recordingHotKey" = "Recording hot key";
+"settings.recordingCursor" = "Show the mouse cursor";
+"settings.recordingClicks" = "Highlight clicks";
 "settings.reset" = "Reset settings";
 "settings.done" = "Done";
 
@@ -103,6 +107,7 @@
 "error.reset.launchAtLogin" = "Settings were reset, but launching at login could not be turned off: %@";
 "error.hotKey.title" = "Hot key not registered";
 "error.hotKey.body" = "The combination %1$@ could not be assigned (error %2$d). That usually means macOS or another app already owns it.\nPick a different combination in Skreen2Go settings — screenshots are still available from the menu bar icon.";
+"error.hotKey.conflict" = "%@ is already assigned to the other Skreen2Go hot key. Pick a different combination.";
 "error.recording.alreadyRunning" = "A recording is already running.";
 "error.recording.title" = "Could not record the screen";
 "error.recording.notRunning" = "No recording is running.";

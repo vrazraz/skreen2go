@@ -95,8 +95,17 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private var boldCheckbox: NSButton!
     private var launchCheckbox: NSButton!
     private var notificationCheckbox: NSButton!
+    private var recordingHotKeyButton: NSButton!
+    private var recordingCursorCheckbox: NSButton!
+    private var recordingClicksCheckbox: NSButton!
     private var hotKeyRecordingMonitor: Any?
-    private var recordingHotKey = false
+    /// Which of the two hot key buttons is waiting for a combination, if either.
+    private var capturingSlot: HotKeySlot?
+
+    enum HotKeySlot: CaseIterable {
+        case screenshot
+        case recording
+    }
 
     var onClose: (() -> Void)?
     private var isRunningModal = false
@@ -190,7 +199,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         title.font = .boldSystemFont(ofSize: 18)
         stack.addArrangedSubview(title)
 
-        hotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording))
+        hotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording(_:)))
         hotKeyButton.bezelStyle = .rounded
         hotKeyButton.widthAnchor.constraint(equalToConstant: 200).isActive = true
         stack.addArrangedSubview(row(label: "settings.hotKey".localized("Hot key"), control: hotKeyButton))
@@ -250,6 +259,29 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         blurSlider = slider(min: 1, max: 40, action: #selector(blurChanged(_:)))
         stack.addArrangedSubview(row(label: "settings.blurRadius".localized("Intensity"), control: blurSlider))
 
+        let recordingTitle = NSTextField(labelWithString: "settings.section.recording".localized("Video recording"))
+        recordingTitle.font = .boldSystemFont(ofSize: 14)
+        stack.addArrangedSubview(recordingTitle)
+
+        recordingHotKeyButton = NSButton(title: "", target: self, action: #selector(toggleHotKeyRecording(_:)))
+        recordingHotKeyButton.bezelStyle = .rounded
+        recordingHotKeyButton.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        stack.addArrangedSubview(row(label: "settings.recordingHotKey".localized("Recording hot key"), control: recordingHotKeyButton))
+
+        recordingCursorCheckbox = NSButton(
+            checkboxWithTitle: "settings.recordingCursor".localized("Show the mouse cursor"),
+            target: self,
+            action: #selector(recordingCursorChanged(_:))
+        )
+        stack.addArrangedSubview(recordingCursorCheckbox)
+
+        recordingClicksCheckbox = NSButton(
+            checkboxWithTitle: "settings.recordingClicks".localized("Highlight clicks"),
+            target: self,
+            action: #selector(recordingClicksChanged(_:))
+        )
+        stack.addArrangedSubview(recordingClicksCheckbox)
+
         launchCheckbox = NSButton(checkboxWithTitle: "settings.launchAtLogin".localized("Launch at login"), target: self, action: #selector(launchAtLoginChanged(_:)))
         stack.addArrangedSubview(launchCheckbox)
 
@@ -272,11 +304,10 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     /// is reopened rather than rebuilt.
     private func refreshControls() {
         guard hotKeyButton != nil else { return }
+        // Also writes both hot key button titles back from the store.
         stopRecordingHotKey()
-        hotKeyButton.title = HotKeyFormatter.string(
-            keyCode: settings.hotKey.keyCode,
-            modifiers: settings.hotKey.modifiers
-        )
+        recordingCursorCheckbox.state = settings.showsCursorInRecording ? .on : .off
+        recordingClicksCheckbox.state = settings.showsClicksInRecording ? .on : .off
         folderField.stringValue = settings.outputFolderURL.path
         formatPopup.selectItem(withTitle: settings.outputFormat.rawValue)
         selectLanguage(settings.interfaceLanguage)
@@ -310,19 +341,23 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Hot key recording
 
-    @objc private func toggleHotKeyRecording() {
-        if recordingHotKey {
+    @objc private func toggleHotKeyRecording(_ sender: NSButton) {
+        let role: HotKeySlot = sender === recordingHotKeyButton ? .recording : .screenshot
+        if capturingSlot == role {
             stopRecordingHotKey()
         } else {
-            startRecordingHotKey()
+            startRecordingHotKey(for: role)
         }
     }
 
-    private func startRecordingHotKey() {
-        recordingHotKey = true
-        hotKeyButton.title = "settings.hotKey.recording".localized("Press a combination… (Esc to cancel)")
+    private func startRecordingHotKey(for slot: HotKeySlot) {
+        // Only one combination can be captured at a time; starting on the other button
+        // takes over rather than leaving two live monitors.
+        stopRecordingHotKey()
+        capturingSlot = slot
+        button(for: slot)?.title = "settings.hotKey.recording".localized("Press a combination… (Esc to cancel)")
         hotKeyRecordingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, self.recordingHotKey else { return event }
+            guard let self, let slot = self.capturingSlot else { return event }
 
             // Esc leaves recording mode instead of trapping every unmodified keystroke
             // until a modified one happens to arrive.
@@ -337,22 +372,64 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
                 return nil
             }
 
-            self.settings.hotKey = HotKeyCombination(keyCode: event.keyCode, modifiers: modifiers)
+            let combination = HotKeyCombination(keyCode: event.keyCode, modifiers: modifiers)
+            switch slot {
+            case .screenshot: self.settings.hotKey = combination
+            case .recording: self.settings.recordingHotKey = combination
+            }
+
+            // The store refuses a combination already held by the other key, so read it
+            // back rather than assuming the assignment took.
+            if self.combination(for: slot) != combination {
+                NSSound.beep()
+                self.stopRecordingHotKey()
+                self.showHotKeyConflict(combination)
+                return nil
+            }
+
             self.stopRecordingHotKey()
             return nil
         }
     }
 
     private func stopRecordingHotKey() {
-        recordingHotKey = false
+        capturingSlot = nil
         if let hotKeyRecordingMonitor {
             NSEvent.removeMonitor(hotKeyRecordingMonitor)
             self.hotKeyRecordingMonitor = nil
         }
-        hotKeyButton?.title = HotKeyFormatter.string(
-            keyCode: settings.hotKey.keyCode,
-            modifiers: settings.hotKey.modifiers
+        for slot in HotKeySlot.allCases {
+            let combination = self.combination(for: slot)
+            button(for: slot)?.title = HotKeyFormatter.string(
+                keyCode: combination.keyCode,
+                modifiers: combination.modifiers
+            )
+        }
+    }
+
+    private func combination(for slot: HotKeySlot) -> HotKeyCombination {
+        switch slot {
+        case .screenshot: return settings.hotKey
+        case .recording: return settings.recordingHotKey
+        }
+    }
+
+    private func button(for slot: HotKeySlot) -> NSButton? {
+        switch slot {
+        case .screenshot: return hotKeyButton
+        case .recording: return recordingHotKeyButton
+        }
+    }
+
+    private func showHotKeyConflict(_ combination: HotKeyCombination) {
+        let alert = NSAlert()
+        alert.messageText = "error.hotKey.title".localized("Hot key not registered")
+        alert.informativeText = "error.hotKey.conflict".localized(
+            "%@ is already assigned to the other Skreen2Go hot key. Pick a different combination.",
+            HotKeyFormatter.string(keyCode: combination.keyCode, modifiers: combination.modifiers)
         )
+        alert.addButton(withTitle: "button.close".localized("Close"))
+        alert.runModal()
     }
 
     // MARK: - Actions
@@ -414,6 +491,8 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     @objc private func blurChanged(_ sender: NSSlider) { settings.blurRadius = CGFloat(sender.doubleValue) }
     @objc private func textBoldChanged(_ sender: NSButton) { settings.textBold = sender.state == .on }
     @objc private func notificationsChanged(_ sender: NSButton) { settings.showNotifications = sender.state == .on }
+    @objc private func recordingCursorChanged(_ sender: NSButton) { settings.showsCursorInRecording = sender.state == .on }
+    @objc private func recordingClicksChanged(_ sender: NSButton) { settings.showsClicksInRecording = sender.state == .on }
 
     @objc private func launchAtLoginChanged(_ sender: NSButton) {
         let enabled = sender.state == .on

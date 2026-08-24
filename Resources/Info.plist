@@ -33,6 +33,8 @@
 	<string>public.app-category.utilities</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Skreen2Go needs microphone access to record your voice along with the screen.</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Skreen2Go needs screen recording access to capture windows and regions.</string>
 </dict>

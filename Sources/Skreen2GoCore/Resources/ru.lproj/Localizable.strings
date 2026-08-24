@@ -70,6 +70,10 @@
 "settings.blurRadius" = "Интенсивность";
 "settings.launchAtLogin" = "Запускать вместе с macOS";
 "settings.showNotifications" = "Показывать уведомления";
+"settings.section.recording" = "Запись видео";
+"settings.recordingHotKey" = "Горячая клавиша записи";
+"settings.recordingCursor" = "Показывать курсор мыши";
+"settings.recordingClicks" = "Подсвечивать клики";
 "settings.reset" = "Сбросить настройки";
 "settings.done" = "Готово";
 
@@ -103,6 +107,7 @@
 "error.reset.launchAtLogin" = "Настройки сброшены, но автозапуск отключить не удалось: %@";
 "error.hotKey.title" = "Горячая клавиша не зарегистрирована";
 "error.hotKey.body" = "Комбинацию %1$@ не удалось назначить (код ошибки %2$d). Обычно это значит, что её уже занимает macOS или другое приложение.\nВыберите другую комбинацию в настройках Skreen2Go — снимок экрана по-прежнему доступен через иконку в menu bar.";
+"error.hotKey.conflict" = "%@ уже назначена другой горячей клавише Skreen2Go. Выберите другую комбинацию.";
 "error.recording.alreadyRunning" = "Запись уже идёт.";
 "error.recording.title" = "Не удалось записать экран";
 "error.recording.notRunning" = "Запись не идёт.";

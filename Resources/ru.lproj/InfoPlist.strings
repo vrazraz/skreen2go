@@ -1,2 +1,5 @@
 /* Shown by macOS in the Screen Recording permission prompt. */
 "NSScreenCaptureUsageDescription" = "Skreen2Go нужен доступ к записи экрана, чтобы создавать скриншоты окон и областей.";
+
+/* Shown by macOS in the Microphone permission prompt. */
+"NSMicrophoneUsageDescription" = "Skreen2Go нужен доступ к микрофону, чтобы записывать голос вместе с экраном.";

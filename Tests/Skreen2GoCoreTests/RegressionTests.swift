@@ -854,15 +854,29 @@ struct RegressionTests {
     /// The Screen Recording prompt is drawn by macOS from Info.plist, not by our code, so
     /// it is the one piece of user-facing text `L10n` can never reach. It used to be
     /// hardcoded in Russian and was shown that way in every language.
-    @Test("Every declared localization translates the permission prompt")
+    /// Every prompt macOS draws on our behalf. Found rather than listed, so a permission
+    /// added later cannot ship without a translation.
+    private func usageDescriptionKeys() throws -> [String] {
+        try infoPlist().keys
+            .filter { $0.hasPrefix("NS") && $0.hasSuffix("UsageDescription") }
+            .sorted()
+    }
+
+    @Test("Every declared localization translates every permission prompt")
     func permissionPromptIsLocalized() throws {
         let declared = try #require(infoPlist()["CFBundleLocalizations"] as? [String])
+        let prompts = try usageDescriptionKeys()
         #expect(declared.isEmpty == false)
+        #expect(prompts.count >= 2, "expected at least the screen capture and microphone prompts")
 
         for language in declared {
             let strings = try infoPlistStrings(language)
-            let prompt = strings["NSScreenCaptureUsageDescription"]
-            #expect(prompt?.isEmpty == false, "\(language) does not translate the capture prompt")
+            for prompt in prompts {
+                #expect(
+                    strings[prompt]?.isEmpty == false,
+                    "\(language) does not translate \(prompt)"
+                )
+            }
         }
     }
 
@@ -870,11 +884,42 @@ struct RegressionTests {
     func infoPlistBaseMatchesDevelopmentRegion() throws {
         let plist = try infoPlist()
         let region = try #require(plist["CFBundleDevelopmentRegion"] as? String)
-        let base = try #require(plist["NSScreenCaptureUsageDescription"] as? String)
+        let regionStrings = try infoPlistStrings(region)
 
         // Whatever locale macOS cannot match falls back to the plist's own value, so it
         // has to read as the development region rather than as some other language.
-        #expect(try infoPlistStrings(region)["NSScreenCaptureUsageDescription"] == base)
+        for prompt in try usageDescriptionKeys() {
+            let base = try #require(plist[prompt] as? String)
+            #expect(regionStrings[prompt] == base, "\(prompt) differs from its \(region) translation")
+        }
+    }
+
+    @Test("The microphone entitlement ships with the microphone prompt")
+    func microphoneEntitlementIsPresent() throws {
+        let url = URL(fileURLWithPath: bundleResourcesDirectory() + "/Skreen2Go.entitlements")
+        let data = try Data(contentsOf: url)
+        let plist = try PropertyListSerialization.propertyList(from: data, format: nil)
+        let entitlements = try #require(plist as? [String: Any])
+
+        // Without it a sandboxed app cannot open the microphone, whichever API asks.
+        #expect(entitlements["com.apple.security.device.audio-input"] as? Bool == true)
+        #expect(entitlements["com.apple.security.app-sandbox"] as? Bool == true)
+    }
+
+    @Test("The deployment target matches everywhere it is written down")
+    func deploymentTargetIsConsistent() throws {
+        let plist = try infoPlist()
+        #expect(plist["LSMinimumSystemVersion"] as? String == "15.0")
+
+        // A half-done platform bump builds locally and fails in CI, so the build script is
+        // checked too.
+        let script = try String(
+            contentsOfFile: bundleResourcesDirectory()
+                .replacingOccurrences(of: "/Resources", with: "/Scripts/build-app.sh"),
+            encoding: .utf8
+        )
+        #expect(script.contains("macosx15.0"))
+        #expect(script.contains("macosx14.0") == false)
     }
 
     @Test("Every language offered in Settings is declared to macOS as well")
