@@ -35,13 +35,20 @@ enum HotKeyFormatter {
     }
 }
 
-/// Wraps `SMAppService` so the login item is managed in exactly one place: the checkbox
-/// and the reset button both go through here.
+/// Small seam around the system login-item API. It keeps the settings controller
+/// deterministic in tests and prevents UI code from knowing how SMAppService works.
 @MainActor
-enum LaunchAtLogin {
-    static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+protocol LoginItemManaging: AnyObject {
+    var isEnabled: Bool { get }
+    func setEnabled(_ enabled: Bool) throws
+    func disableIfEnabled() throws
+}
 
-    static func setEnabled(_ enabled: Bool) throws {
+@MainActor
+final class SystemLoginItemManager: LoginItemManaging {
+    var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+
+    func setEnabled(_ enabled: Bool) throws {
         if enabled {
             try SMAppService.mainApp.register()
         } else {
@@ -49,15 +56,32 @@ enum LaunchAtLogin {
         }
     }
 
-    static func disableIfEnabled() throws {
+    func disableIfEnabled() throws {
         guard isEnabled else { return }
         try SMAppService.mainApp.unregister()
     }
 }
 
 @MainActor
+enum SettingsResetService {
+    static func reset(
+        settings: SettingsStore,
+        loginItemManager: any LoginItemManaging
+    ) -> Error? {
+        settings.reset()
+        do {
+            try loginItemManager.disableIfEnabled()
+            return nil
+        } catch {
+            return error
+        }
+    }
+}
+
+@MainActor
 final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private let settings: SettingsStore
+    private let loginItemManager: any LoginItemManaging
     private var hotKeyButton: NSButton!
     private var folderField: NSTextField!
     private var formatPopup: NSPopUpButton!
@@ -77,8 +101,12 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     var onClose: (() -> Void)?
     private var isRunningModal = false
 
-    init(settings: SettingsStore) {
+    init(
+        settings: SettingsStore,
+        loginItemManager: (any LoginItemManaging)? = nil
+    ) {
         self.settings = settings
+        self.loginItemManager = loginItemManager ?? SystemLoginItemManager()
         let window = NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 560, height: 650),
             styleMask: [.titled, .closable],
@@ -260,7 +288,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         blurSlider.doubleValue = Double(settings.blurRadius)
         boldCheckbox.state = settings.textBold ? .on : .off
         notificationCheckbox.state = settings.showNotifications ? .on : .off
-        launchCheckbox.state = LaunchAtLogin.isEnabled ? .on : .off
+        launchCheckbox.state = loginItemManager.isEnabled ? .on : .off
     }
 
     private func row(label: String, control: NSView) -> NSView {
@@ -390,7 +418,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     @objc private func launchAtLoginChanged(_ sender: NSButton) {
         let enabled = sender.state == .on
         do {
-            try LaunchAtLogin.setEnabled(enabled)
+            try loginItemManager.setEnabled(enabled)
             settings.launchAtLogin = enabled
         } catch {
             // Registration only works from inside a signed .app bundle; failing silently
@@ -404,18 +432,18 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
                 error.localizedDescription
             )
             alert.runModal()
-            sender.state = LaunchAtLogin.isEnabled ? .on : .off
+            sender.state = loginItemManager.isEnabled ? .on : .off
         }
     }
 
     @objc private func resetSettings() {
-        settings.reset()
         // The login item lives in the system, not in UserDefaults: wiping preferences has
         // to take the app back out of the launch list too, otherwise it keeps starting
         // with macOS while the setting reads "off".
-        do {
-            try LaunchAtLogin.disableIfEnabled()
-        } catch {
+        if let error = SettingsResetService.reset(
+            settings: settings,
+            loginItemManager: loginItemManager
+        ) {
             ScreenshotOutput.showError("error.reset.launchAtLogin".localized("Settings were reset, but launching at login could not be turned off: %@", error.localizedDescription))
         }
         refreshControls()

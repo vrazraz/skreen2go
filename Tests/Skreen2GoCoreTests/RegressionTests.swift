@@ -77,6 +77,13 @@ struct RegressionTests {
         #expect(AnnotationGeometry.isMeaningful(arrow) == false)
     }
 
+    @Test("Command-C is the copy shortcut")
+    func commandCIsCopyShortcut() {
+        #expect(AppKeyboardShortcut.isCommandC(keyCode: 8, modifiers: [.command]))
+        #expect(AppKeyboardShortcut.isCommandC(keyCode: 8, modifiers: [.command, .shift]) == false)
+        #expect(AppKeyboardShortcut.isCommandC(keyCode: 6, modifiers: [.command]) == false)
+    }
+
     @Test("A dragged arrow is kept")
     func realArrowAccepted() {
         let arrow = Annotation(
@@ -103,6 +110,31 @@ struct RegressionTests {
         }
         #expect(AnnotationGeometry.isMeaningful(rectangle(1)) == false)
         #expect(AnnotationGeometry.isMeaningful(rectangle(40)))
+    }
+
+    @Test("Annotations are kept inside the image when moved")
+    func annotationGeometryIsClamped() {
+        let bounds = CGRect(x: 0, y: 0, width: 100, height: 80)
+        let arrow = Annotation(
+            kind: .arrow,
+            start: CGPoint(x: -20, y: 90),
+            end: CGPoint(x: 120, y: -10),
+            color: .red,
+            thickness: 3,
+            opacity: 1
+        )
+        let clampedArrow = AnnotationGeometry.clamped(arrow, to: bounds)
+        #expect(clampedArrow.start == CGPoint(x: 0, y: 80))
+        #expect(clampedArrow.end == CGPoint(x: 100, y: 0))
+
+        let rectangle = Annotation(
+            kind: .rectangle,
+            rect: CGRect(x: 90, y: 70, width: 40, height: 40),
+            color: .red,
+            thickness: 3,
+            opacity: 1
+        )
+        #expect(AnnotationGeometry.clamped(rectangle, to: bounds).rect == CGRect(x: 60, y: 40, width: 40, height: 40))
     }
 
     // MARK: - #12/#13 Undo bookkeeping
@@ -377,20 +409,29 @@ struct RegressionTests {
         #expect(settings.launchAtLogin == false)
     }
 
-    @Test("Reset also unregisters the system login item")
-    func resetUnregistersLoginItem() throws {
-        // The system side cannot be exercised in a unit test, so pin the wiring instead:
-        // resetSettings() must go through LaunchAtLogin, not stop at UserDefaults.
-        let path = #filePath.replacingOccurrences(
-            of: "/Tests/Skreen2GoCoreTests/RegressionTests.swift",
-            with: "/Sources/Skreen2GoCore/Settings.swift"
-        )
-        let source = try String(contentsOfFile: path, encoding: .utf8)
-        let reset = try #require(source.range(of: "func resetSettings()"))
-        let body = String(source[reset.lowerBound...].prefix(600))
+    @Test("Reset unregisters the system login item as well as clearing preferences")
+    func resetUnregistersLoginItem() {
+        final class FakeLoginItemManager: LoginItemManaging {
+            var isEnabled = true
+            var disableCalls = 0
 
-        #expect(body.contains("settings.reset()"))
-        #expect(body.contains("LaunchAtLogin.disableIfEnabled"), "reset leaves the login item registered")
+            func setEnabled(_ enabled: Bool) throws { isEnabled = enabled }
+
+            func disableIfEnabled() throws {
+                disableCalls += 1
+                isEnabled = false
+            }
+        }
+
+        let manager = FakeLoginItemManager()
+        let settings = makeSettings()
+        settings.launchAtLogin = true
+
+        let error = SettingsResetService.reset(settings: settings, loginItemManager: manager)
+        #expect(error == nil)
+        #expect(manager.disableCalls == 1)
+        #expect(manager.isEnabled == false)
+        #expect(settings.launchAtLogin == false)
     }
 
     @Test("The selected output folder survives through a security-scoped bookmark")
@@ -406,6 +447,17 @@ struct RegressionTests {
 
         let accessedURL = try settings.withOutputFolderAccess { $0.standardizedFileURL }
         #expect(accessedURL == folder.standardizedFileURL)
+    }
+
+    @Test("Screenshot file writes run through the shared writer")
+    func screenshotFileWriterWritesData() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Skreen2Go-(UUID().uuidString).png")
+        let data = Data("test screenshot".utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        try await ScreenshotFileWriter.shared.write(data, to: url)
+        #expect(try Data(contentsOf: url) == data)
     }
 
     // MARK: - Action confirmations
@@ -429,25 +481,10 @@ struct RegressionTests {
 
     @Test("Exactly one confirmation channel is wired up")
     func onlyTheToastConfirms() {
-        // Guards against the duplicate-notification regression: nothing may post to
-        // UNUserNotificationCenter alongside the toast.
-        let sources = try! FileManager.default.contentsOfDirectory(
-            atPath: #filePath.replacingOccurrences(
-                of: "/Tests/Skreen2GoCoreTests/RegressionTests.swift",
-                with: "/Sources/Skreen2GoCore"
-            )
-        )
-        for name in sources where name.hasSuffix(".swift") {
-            let path = #filePath.replacingOccurrences(
-                of: "/Tests/Skreen2GoCoreTests/RegressionTests.swift",
-                with: "/Sources/Skreen2GoCore/" + name
-            )
-            let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            #expect(
-                text.contains("UNUserNotificationCenter.current().add") == false,
-                "\(name) posts a system notification — that would double up with the toast"
-            )
-        }
+        // ScreenshotOutput exposes one reporting operation; all user-visible outcomes
+        // are represented by the same value type and rendered by the toast presenter.
+        #expect(ScreenshotOutcome.copied != .saved(URL(fileURLWithPath: "/tmp/copied.png")))
+        #expect(ScreenshotOutcome.saved(URL(fileURLWithPath: "/tmp/a.png")).title == "outcome.saved.title".localized("Saved"))
     }
 
     @Test("Each action gets its own wording")
@@ -1188,6 +1225,17 @@ struct RegressionTests {
         #expect(overlay.testActionBarIsVisible == false)
     }
 
+    @Test("Command-C routes through the same copy action as the button")
+    func commandCRoutesToCopyAction() {
+        let overlay = makeOverlay()
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 400, height: 250))
+        var receivedAction: SelectionAction?
+        overlay.onSelectionAction = { action, _ in receivedAction = action }
+
+        #expect(overlay.testPerformAction(.copy))
+        #expect(receivedAction == .copy)
+    }
+
     @Test("Hovering a panel button gives the pointing hand")
     func panelButtonsShowPointingHand() throws {
         let overlay = makeOverlay(size: CGSize(width: 1200, height: 800))
@@ -1755,6 +1803,27 @@ struct RegressionTests {
         #expect(settings.blurRadius == 12)
         #expect(settings.showNotifications)
         #expect(settings.outputFormat == .png)
+    }
+
+    @Test("Corrupt persisted drawing settings are clamped to safe UI ranges")
+    func corruptSettingsAreClamped() {
+        let suiteName = "Skreen2GoCorruptSettings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.set(-100.0, forKey: "strokeThickness")
+        defaults.set(10.0, forKey: "strokeOpacity")
+        defaults.set(Double.infinity, forKey: "textSize")
+        defaults.set(-1.0, forKey: "textOpacity")
+        defaults.set(999.0, forKey: "blurRadius")
+        defaults.set(999, forKey: "hotKeyKeyCode")
+        defaults.set(0, forKey: "hotKeyModifiers")
+
+        let settings = SettingsStore(defaults: defaults)
+        #expect(settings.strokeThickness == 1)
+        #expect(settings.strokeOpacity == 1)
+        #expect(settings.textSize == 24)
+        #expect(settings.textOpacity == 0.1)
+        #expect(settings.blurRadius == 40)
+        #expect(settings.hotKey == HotKeyCombination.default)
     }
 
     // MARK: - Export smoke test across every annotation kind

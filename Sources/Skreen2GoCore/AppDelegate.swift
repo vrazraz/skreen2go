@@ -28,6 +28,7 @@ private func skreenHotKeyHandler(
 /// The monitor approach needed Input Monitoring permission that the app never requested,
 /// and it could not swallow the event — the combination also reached whatever app was
 /// frontmost. `RegisterEventHotKey` needs no extra permission and consumes the key.
+@MainActor
 final class HotKeyMonitor {
     enum RegistrationResult: Equatable {
         case registered
@@ -132,7 +133,7 @@ final class HotKeyMonitor {
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settings = SettingsStore.shared
     private let captureController = CaptureController()
-    private var statusItem: NSStatusItem!
+    private var statusItem: NSStatusItem?
     private var hotKeyMonitor: HotKeyMonitor!
     private var editorController: EditorPanelController?
     private var settingsController: SettingsPanelController?
@@ -182,7 +183,12 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+        }
+
+        let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        self.statusItem = statusItem
         guard let button = statusItem.button else { return }
         let image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "menu.capture".localized("Take Screenshot"))
         image?.isTemplate = true

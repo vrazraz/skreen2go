@@ -173,6 +173,47 @@ enum AnnotationGeometry {
             return annotation.rect.width > 0 && annotation.rect.height > 0
         }
     }
+
+    /// Keeps an annotation inside an image or selection. Text is represented by its
+    /// insertion point, so callers may provide its measured bounds to keep the whole
+    /// rendered string visible.
+    static func clamped(
+        _ annotation: Annotation,
+        to bounds: CGRect,
+        textBounds: CGRect? = nil
+    ) -> Annotation {
+        var result = annotation
+        switch annotation.kind {
+        case .arrow:
+            result.start = clamp(annotation.start, to: bounds)
+            result.end = clamp(annotation.end, to: bounds)
+        case .rectangle, .blur, .cursor:
+            result.rect = clamp(annotation.rect, to: bounds)
+        case .text:
+            let measured = textBounds ?? annotation.rect
+            let visible = clamp(
+                CGRect(origin: annotation.rect.origin, size: measured.size),
+                to: bounds
+            )
+            result.rect.origin = visible.origin
+        }
+        return result
+    }
+
+    private static func clamp(_ point: CGPoint, to bounds: CGRect) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, bounds.minX), bounds.maxX),
+            y: min(max(point.y, bounds.minY), bounds.maxY)
+        )
+    }
+
+    private static func clamp(_ rect: CGRect, to bounds: CGRect) -> CGRect {
+        let width = min(max(0, rect.width), bounds.width)
+        let height = min(max(0, rect.height), bounds.height)
+        let x = min(max(rect.minX, bounds.minX), bounds.maxX - width)
+        let y = min(max(rect.minY, bounds.minY), bounds.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
 }
 
 struct HotKeyCombination: Equatable {
@@ -183,6 +224,12 @@ struct HotKeyCombination: Equatable {
     /// system-wide and swallows the event, so it would otherwise shadow common
     /// shortcuts such as ⌘⇧S ("Save As") in every other application.
     static let `default` = HotKeyCombination(keyCode: 1, modifiers: [.control, .shift])
+}
+
+enum AppKeyboardShortcut {
+    static func isCommandC(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Bool {
+        keyCode == 8 && modifiers.intersection(.deviceIndependentFlagsMask) == [.command]
+    }
 }
 
 final class SettingsStore {
@@ -196,15 +243,31 @@ final class SettingsStore {
 
     var hotKey: HotKeyCombination {
         get {
-            let keyCode = (defaults.object(forKey: Key.hotKeyKeyCode) as? Int)
-                .map { UInt16(truncatingIfNeeded: $0) } ?? HotKeyCombination.default.keyCode
-            let modifiers = (defaults.object(forKey: Key.hotKeyModifiers) as? UInt)
-                .map { NSEvent.ModifierFlags(rawValue: $0) } ?? HotKeyCombination.default.modifiers
+            let storedKeyCode = (defaults.object(forKey: Key.hotKeyKeyCode) as? NSNumber)?.intValue
+            let storedModifiers = (defaults.object(forKey: Key.hotKeyModifiers) as? NSNumber)?.uintValue
+            let keyCode: UInt16
+            if let storedKeyCode {
+                guard (0...127).contains(storedKeyCode) else {
+                    return HotKeyCombination.default
+                }
+                keyCode = UInt16(storedKeyCode)
+            } else {
+                keyCode = HotKeyCombination.default.keyCode
+            }
+            let modifiers = storedModifiers.map {
+                NSEvent.ModifierFlags(rawValue: $0).intersection(.deviceIndependentFlagsMask)
+            } ?? HotKeyCombination.default.modifiers
+            guard !modifiers.isEmpty else { return HotKeyCombination.default }
             return HotKeyCombination(keyCode: keyCode, modifiers: modifiers)
         }
         set {
-            defaults.set(Int(newValue.keyCode), forKey: Key.hotKeyKeyCode)
-            defaults.set(newValue.modifiers.rawValue, forKey: Key.hotKeyModifiers)
+            let keyCode = (0...127).contains(Int(newValue.keyCode))
+                ? newValue.keyCode
+                : HotKeyCombination.default.keyCode
+            let modifiers = newValue.modifiers.intersection(.deviceIndependentFlagsMask)
+            let validModifiers = modifiers.isEmpty ? HotKeyCombination.default.modifiers : modifiers
+            defaults.set(Int(keyCode), forKey: Key.hotKeyKeyCode)
+            defaults.set(validModifiers.rawValue, forKey: Key.hotKeyModifiers)
             notify()
         }
     }
@@ -261,6 +324,25 @@ final class SettingsStore {
         return try body(folder)
     }
 
+    /// Async counterpart used by screenshot saving. The security-scoped extension stays
+    /// active while the file writer actor performs the actual disk I/O.
+    func withOutputFolderAccessAsync<T>(_ body: (URL) async throws -> T) async throws -> T {
+        let folder = outputFolderURL
+        let needsSecurityScope = defaults.data(forKey: Key.outputFolderBookmark) != nil
+        let didStartAccess = needsSecurityScope && folder.startAccessingSecurityScopedResource()
+
+        guard !needsSecurityScope || didStartAccess else {
+            throw OutputFolderAccessError.unavailable
+        }
+
+        defer {
+            if didStartAccess {
+                folder.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try await body(folder)
+    }
+
     var defaultColor: NSColor {
         get {
             guard defaults.object(forKey: Key.colorRed) != nil else { return .systemRed }
@@ -268,40 +350,40 @@ final class SettingsStore {
             // calibratedRGB meant the colour you got out never quite matched the one you
             // put in.
             return NSColor(
-                deviceRed: defaults.double(forKey: Key.colorRed),
-                green: defaults.double(forKey: Key.colorGreen),
-                blue: defaults.double(forKey: Key.colorBlue),
-                alpha: defaults.double(forKey: Key.colorAlpha)
+                deviceRed: Self.finiteComponent(Self.double(for: Key.colorRed, in: defaults, default: 0)),
+                green: Self.finiteComponent(Self.double(for: Key.colorGreen, in: defaults, default: 0)),
+                blue: Self.finiteComponent(Self.double(for: Key.colorBlue, in: defaults, default: 0)),
+                alpha: Self.finiteComponent(Self.double(for: Key.colorAlpha, in: defaults, default: 1))
             )
         }
         set {
             let color = newValue.usingColorSpace(.deviceRGB) ?? .systemRed
-            defaults.set(color.redComponent, forKey: Key.colorRed)
-            defaults.set(color.greenComponent, forKey: Key.colorGreen)
-            defaults.set(color.blueComponent, forKey: Key.colorBlue)
-            defaults.set(color.alphaComponent, forKey: Key.colorAlpha)
+            defaults.set(Self.finiteComponent(color.redComponent), forKey: Key.colorRed)
+            defaults.set(Self.finiteComponent(color.greenComponent), forKey: Key.colorGreen)
+            defaults.set(Self.finiteComponent(color.blueComponent), forKey: Key.colorBlue)
+            defaults.set(Self.finiteComponent(color.alphaComponent), forKey: Key.colorAlpha)
             notify()
         }
     }
 
     var strokeThickness: CGFloat {
-        get { CGFloat(defaults.object(forKey: Key.strokeThickness) as? Double ?? 3) }
-        set { defaults.set(Double(newValue), forKey: Key.strokeThickness); notify() }
+        get { Self.clamped(Self.double(for: Key.strokeThickness, in: defaults, default: 3), to: 1...16, default: 3) }
+        set { defaults.set(Double(Self.clamped(newValue, to: 1...16, default: 3)), forKey: Key.strokeThickness); notify() }
     }
 
     var strokeOpacity: CGFloat {
-        get { CGFloat(defaults.object(forKey: Key.strokeOpacity) as? Double ?? 1) }
-        set { defaults.set(Double(newValue), forKey: Key.strokeOpacity); notify() }
+        get { Self.clamped(Self.double(for: Key.strokeOpacity, in: defaults, default: 1), to: 0.1...1, default: 1) }
+        set { defaults.set(Double(Self.clamped(newValue, to: 0.1...1, default: 1)), forKey: Key.strokeOpacity); notify() }
     }
 
     var textSize: CGFloat {
-        get { CGFloat(defaults.object(forKey: Key.textSize) as? Double ?? 24) }
-        set { defaults.set(Double(newValue), forKey: Key.textSize); notify() }
+        get { Self.clamped(Self.double(for: Key.textSize, in: defaults, default: 24), to: 10...72, default: 24) }
+        set { defaults.set(Double(Self.clamped(newValue, to: 10...72, default: 24)), forKey: Key.textSize); notify() }
     }
 
     var textOpacity: CGFloat {
-        get { CGFloat(defaults.object(forKey: Key.textOpacity) as? Double ?? 1) }
-        set { defaults.set(Double(newValue), forKey: Key.textOpacity); notify() }
+        get { Self.clamped(Self.double(for: Key.textOpacity, in: defaults, default: 1), to: 0.1...1, default: 1) }
+        set { defaults.set(Double(Self.clamped(newValue, to: 0.1...1, default: 1)), forKey: Key.textOpacity); notify() }
     }
 
     var textBold: Bool {
@@ -310,8 +392,8 @@ final class SettingsStore {
     }
 
     var blurRadius: CGFloat {
-        get { CGFloat(defaults.object(forKey: Key.blurRadius) as? Double ?? 12) }
-        set { defaults.set(Double(newValue), forKey: Key.blurRadius); notify() }
+        get { Self.clamped(Self.double(for: Key.blurRadius, in: defaults, default: 12), to: 1...40, default: 12) }
+        set { defaults.set(Double(Self.clamped(newValue, to: 1...40, default: 12)), forKey: Key.blurRadius); notify() }
     }
 
     var interfaceLanguage: InterfaceLanguage {
@@ -361,6 +443,24 @@ final class SettingsStore {
         NotificationCenter.default.post(name: .skreenSettingsDidChange, object: self)
     }
 
+    private static func finiteComponent<T: BinaryFloatingPoint>(_ value: T) -> CGFloat {
+        guard value.isFinite else { return 1 }
+        return CGFloat(min(max(value, 0), 1))
+    }
+
+    private static func double(for key: String, in defaults: UserDefaults, default fallback: Double) -> Double {
+        (defaults.object(forKey: key) as? NSNumber)?.doubleValue ?? fallback
+    }
+
+    private static func clamped<T: BinaryFloatingPoint>(
+        _ value: T,
+        to range: ClosedRange<T>,
+        default fallback: T
+    ) -> CGFloat {
+        guard value.isFinite else { return CGFloat(fallback) }
+        return CGFloat(min(max(value, range.lowerBound), range.upperBound))
+    }
+
     private enum Key {
         static let hotKeyKeyCode = "hotKeyKeyCode"
         static let hotKeyModifiers = "hotKeyModifiers"
@@ -392,7 +492,12 @@ final class SettingsStore {
 
 final class ScreenshotDocument {
     let image: NSImage
-    var annotations: [Annotation] = []
+    let session = AnnotationSession()
+
+    var annotations: [Annotation] {
+        get { session.annotations }
+        set { session.annotations = newValue }
+    }
     /// Gaussian blur is expensive; the cache keeps one blurred copy per (source, radius)
     /// so dragging a blur rectangle does not re-filter the whole screenshot every frame.
     let blurCache = BlurCache()
