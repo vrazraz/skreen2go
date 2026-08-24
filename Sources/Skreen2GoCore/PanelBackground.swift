@@ -383,11 +383,13 @@ final class PanelBackgroundView: NSView {
     // MARK: - Ingredients
 
     private static let rimWidth: CGFloat = 2
-    /// The gradient from the card this is modelled on.
+    /// Greyscale, dark to light. The card this is modelled on runs blue to violet; here
+    /// the panel sits over the very thing being captured, and a colourless sweep lights
+    /// the edge without tinting what is behind it.
     private static let glowColours: [CGColor] = [
-        NSColor(red: 0.365, green: 0.863, blue: 1.0, alpha: 1).cgColor,
-        NSColor(red: 0.235, green: 0.404, blue: 0.890, alpha: 1).cgColor,
-        NSColor(red: 0.306, green: 0.0, blue: 0.761, alpha: 1).cgColor
+        NSColor(white: 0.97, alpha: 1).cgColor,
+        NSColor(white: 0.62, alpha: 1).cgColor,
+        NSColor(white: 0.22, alpha: 1).cgColor
     ]
 
     /// A linear gradient whose angle turns a full circle, which is what the original
