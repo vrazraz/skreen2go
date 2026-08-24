@@ -1175,9 +1175,13 @@ struct RegressionTests {
         let bar = try #require(overlay.testActionBarFrame)
         #expect(overlay.testActiveHint == nil)
 
-        // First control from the left is the arrow tool.
+        // Leaving sits on the left, out of the path to the buttons that commit.
         overlay.testForceHint(at: CGPoint(x: bar.minX + 22, y: bar.midY))
-        #expect(overlay.testActiveHint == "tool.arrow".localized("Arrow"))
+        #expect(overlay.testActiveHint == "tool.cancel".localized("Cancel (Esc)"))
+
+        // Saving is at the far right, where the outcomes are gathered.
+        overlay.testForceHint(at: CGPoint(x: bar.maxX - 22, y: bar.midY))
+        #expect(overlay.testActiveHint == "tool.saveAs".localized("Save As…"))
     }
 
     @Test("The panel background offers no hint")

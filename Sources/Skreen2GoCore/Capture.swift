@@ -212,6 +212,7 @@ final class SelectionActionBar: NSView {
     private var audioSymbols: [ObjectIdentifier: (on: String, off: String)] = [:]
 
     private static let primarySide: CGFloat = 40
+    private static let secondarySide: CGFloat = 30
 
     init(
         color: NSColor,
@@ -267,6 +268,11 @@ final class SelectionActionBar: NSView {
     }
 
     private func buildScreenshotControls(in stack: NSStackView, color: NSColor) {
+        // Leaving is on the left, away from the buttons that commit to something, so the
+        // pointer never passes over Cancel on its way to Save.
+        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
+        stack.addArrangedSubview(separator())
+
         stack.addArrangedSubview(toolButton("arrow.up.right", "tool.arrow".localized("Arrow"), tool: .arrow, #selector(arrowTool)))
         stack.addArrangedSubview(toolButton("rectangle", "tool.rectangle".localized("Rectangle"), tool: .rectangle, #selector(rectangleTool)))
         stack.addArrangedSubview(toolButton("textformat", "tool.text".localized("Text"), tool: .text, #selector(textTool)))
@@ -291,7 +297,8 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
 
         stack.addArrangedSubview(separator())
-        // The two things a screenshot is actually for, at the size that says so.
+        // What a screenshot is actually for, gathered at the far end of the panel and
+        // round, so the panel reads as tools first and outcomes last.
         stack.addArrangedSubview(primaryButton(
             "doc.on.doc",
             "tool.copy".localized("Copy"),
@@ -304,24 +311,21 @@ final class SelectionActionBar: NSView {
             fill: nil,
             #selector(save)
         ))
-
-        stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("square.and.arrow.down.on.square", "tool.saveAs".localized("Save As…"), #selector(saveAs)))
-        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
+        stack.addArrangedSubview(button(
+            "square.and.arrow.down.on.square",
+            "tool.saveAs".localized("Save As…"),
+            #selector(saveAs),
+            circular: true
+        ))
 
         setActiveTool(.none)
     }
 
     private func buildRecordingControls(in stack: NSStackView) {
-        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
+        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
         stack.addArrangedSubview(separator())
 
-        stack.addArrangedSubview(primaryButton(
-            nil,
-            "tool.record".localized("Record video"),
-            fill: .systemRed,
-            #selector(record)
-        ))
+        stack.addArrangedSubview(button("gearshape", "tool.settings".localized("Settings"), #selector(openSettings)))
 
         // The audio sources sit right beside the button that uses them, so the choice is
         // made in the same glance as the decision to record. They persist between runs.
@@ -346,7 +350,12 @@ final class SelectionActionBar: NSView {
         stack.addArrangedSubview(microphone)
 
         stack.addArrangedSubview(separator())
-        stack.addArrangedSubview(button("xmark", "tool.cancel".localized("Cancel (Esc)"), #selector(cancel)))
+        stack.addArrangedSubview(primaryButton(
+            nil,
+            "tool.record".localized("Record video"),
+            fill: .systemRed,
+            #selector(record)
+        ))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -389,17 +398,38 @@ final class SelectionActionBar: NSView {
     }
 
     /// Icon-only: the name lives in the tooltip so the bar stays compact.
-    private func button(_ symbol: String, _ title: String, _ action: Selector) -> NSButton {
+    private func button(
+        _ symbol: String,
+        _ title: String,
+        _ action: Selector,
+        circular: Bool = false
+    ) -> NSButton {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
         let button = NSButton(image: image ?? NSImage(), target: self, action: action)
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
-        button.bezelStyle = .texturedRounded
         button.setAccessibilityTitle(title)
         hintTitles[ObjectIdentifier(button)] = title
         button.setContentHuggingPriority(.required, for: .horizontal)
         button.setContentCompressionResistancePriority(.required, for: .horizontal)
-        button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+
+        if circular {
+            // Same shape as the primary buttons it stands next to, one size down: it is
+            // the same kind of action, just the less common one.
+            button.isBordered = false
+            button.setButtonType(.momentaryChange)
+            button.wantsLayer = true
+            button.layer?.cornerRadius = Self.secondarySide / 2
+            button.layer?.backgroundColor = NSColor(white: 0.88, alpha: 1).cgColor
+            button.layer?.borderWidth = 1
+            button.layer?.borderColor = NSColor.black.withAlphaComponent(0.18).cgColor
+            button.contentTintColor = .black
+            button.widthAnchor.constraint(equalToConstant: Self.secondarySide).isActive = true
+            button.heightAnchor.constraint(equalToConstant: Self.secondarySide).isActive = true
+        } else {
+            button.bezelStyle = .texturedRounded
+            button.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        }
         return button
     }
 
