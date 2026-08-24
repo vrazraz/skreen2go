@@ -1276,6 +1276,36 @@ struct RegressionTests {
         #expect(radius > 0)
     }
 
+    @Test("Reaching for the panel takes the lit edge away")
+    func hoverFadesTheGlowingEdge() throws {
+        let settings = makeSettings()
+        settings.panelBackground = .glow
+        let overlay = CaptureOverlayView(
+            frame: CGRect(x: 0, y: 0, width: 1200, height: 800),
+            settings: settings,
+            mode: .screenshot
+        )
+        overlay.testSetSelection(CGRect(x: 200, y: 300, width: 500, height: 300))
+        overlay.testShowActionBar()
+        overlay.testLayoutActionBar()
+
+        let background = try #require(overlay.testPanelBackgroundView)
+        #expect(background.testGlowOpacity > 0)
+        #expect(background.testRimOpacity > 0)
+        #expect(background.testRimIsTurning)
+
+        // Once you are reaching for a control, a moving rim behind it is in the way.
+        background.setPointerInside(true)
+        #expect(background.testGlowOpacity == 0)
+        #expect(background.testRimOpacity == 0)
+
+        // And it comes back when the pointer moves off, still turning.
+        background.setPointerInside(false)
+        #expect(background.testGlowOpacity > 0)
+        #expect(background.testRimOpacity > 0)
+        #expect(background.testRimIsTurning)
+    }
+
     @Test("The panel background style round-trips and resets")
     func panelBackgroundSettingRoundTrips() {
         let settings = makeSettings()

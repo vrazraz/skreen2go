@@ -254,6 +254,36 @@ final class PanelBackgroundView: NSView {
     private var glowLayer: CAGradientLayer?
     private var glowContainer: CALayer?
     private var glowTint: CALayer?
+    private var isPointerInside = false
+
+    /// Fades the lit edge out while the pointer is over the panel, then stops it turning
+    /// altogether.
+    ///
+    /// The point is the same one the original card makes by killing its animation on
+    /// hover: once you are reaching for a control, a moving rim behind it is in the way.
+    /// Taking the animations off after the fade also means nothing keeps being drawn for
+    /// something that is no longer visible.
+    func setPointerInside(_ inside: Bool) {
+        guard isEdgeLit, inside != isPointerInside else { return }
+        isPointerInside = inside
+
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(Self.fadeDuration)
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, self.isPointerInside == inside else { return }
+            if inside {
+                self.glowLayer?.removeAllAnimations()
+                self.rimLayer?.removeAllAnimations()
+            }
+        }
+        if !inside {
+            glowLayer.map(Self.applySpin)
+            rimLayer.map(Self.applySpin)
+        }
+        glowContainer?.opacity = inside ? 0 : Self.glowOpacity
+        rimLayer?.opacity = inside ? 0 : 1
+        CATransaction.commit()
+    }
 
     /// For tests: the blur actually attached to the glow, and its radius.
     var testGlowBlurRadius: CGFloat? {
@@ -262,6 +292,9 @@ final class PanelBackgroundView: NSView {
         return filter.value(forKey: kCIInputRadiusKey) as? CGFloat
     }
     var testUsesCoreImageFilters: Bool { layerUsesCoreImageFilters }
+    var testGlowOpacity: Float { glowContainer?.opacity ?? 0 }
+    var testRimOpacity: Float { rimLayer?.opacity ?? 0 }
+    var testRimIsTurning: Bool { (rimLayer?.animationKeys() ?? []).contains("startPoint") }
     private var blobDrifts: [CABasicAnimation] = []
     private var plasmaDirections: [CGFloat] = []
 
@@ -286,7 +319,7 @@ final class PanelBackgroundView: NSView {
             let padding = radius * 3
             let container = bounds.insetBy(dx: -padding, dy: -padding)
             glowContainer?.frame = container
-            glowContainer?.opacity = 0.75
+            glowContainer?.opacity = isPointerInside ? 0 : Self.glowOpacity
             (glowContainer?.filters?.first as? CIFilter)?
                 .setValue(radius, forKey: kCIInputRadiusKey)
 
@@ -390,7 +423,12 @@ final class PanelBackgroundView: NSView {
 
     // MARK: - Ingredients
 
-    private static let rimWidth: CGFloat = 1
+    /// One physical pixel on a Retina display, which is where the thickness was being
+    /// judged from.
+    private static let rimWidth: CGFloat = 1.5
+    private static let glowOpacity: Float = 0.75
+    /// Matches the `transition: opacity .5s` the effect is modelled on.
+    private static let fadeDuration = 0.5
     /// A couple of tones below `PanelStyle.buttonFill`, so the controls sit slightly
     /// proud of the panel instead of dissolving into it. Part-transparent, so the blur
     /// underneath still shows through.
@@ -425,7 +463,23 @@ final class PanelBackgroundView: NSView {
         }
         gradient.startPoint = starts[0]
         gradient.endPoint = ends[0]
+        applySpin(to: gradient)
+        return gradient
+    }
 
+    /// Separate from building the gradient so the turn can be put back after a hover has
+    /// taken it away.
+    private static func applySpin(to gradient: CAGradientLayer) {
+        let steps = 36
+        var starts: [CGPoint] = []
+        var ends: [CGPoint] = []
+        for step in 0...steps {
+            let angle = 2 * Double.pi * Double(step) / Double(steps)
+            let dx = CGFloat(cos(angle)) / 2
+            let dy = CGFloat(sin(angle)) / 2
+            starts.append(CGPoint(x: 0.5 - dx, y: 0.5 - dy))
+            ends.append(CGPoint(x: 0.5 + dx, y: 0.5 + dy))
+        }
         for (keyPath, values) in [("startPoint", starts), ("endPoint", ends)] {
             let spin = CAKeyframeAnimation(keyPath: keyPath)
             spin.values = values
@@ -435,7 +489,6 @@ final class PanelBackgroundView: NSView {
             spin.isRemovedOnCompletion = false
             gradient.add(spin, forKey: keyPath)
         }
-        return gradient
     }
 
     /// Far stronger than the gradient styles': a puff is thin on its own, and only the

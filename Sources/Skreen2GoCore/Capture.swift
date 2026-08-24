@@ -626,6 +626,11 @@ final class SelectionActionBar: NSView {
 
     /// Settings can change the toggles behind the bar's back, so they are re-read whenever
     /// the settings window closes.
+    /// Passed down from the overlay, which is the view that actually tracks the pointer.
+    func setPointerInside(_ inside: Bool) {
+        subviews.compactMap { $0 as? PanelBackgroundView }.first?.setPointerInside(inside)
+    }
+
     func refreshAudioToggles() {
         setAudioToggle(systemAudioButton, isOn: settings.recordsSystemAudio)
         setAudioToggle(microphoneButton, isOn: settings.recordsMicrophone)
@@ -1200,6 +1205,7 @@ final class CaptureOverlayView: NSView {
         let point = convert(event.locationInWindow, from: nil)
         updateCursor(at: point)
         updateHint(at: point)
+        updatePanelHover(at: point)
         // A live selection replaces window highlighting entirely.
         if selection == nil {
             updateHoveredWindow(at: point)
@@ -1234,6 +1240,13 @@ final class CaptureOverlayView: NSView {
         }
         hintWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.hintDelay, execute: work)
+    }
+
+    /// The panel has no tracking area of its own: the overlay covers every screen and
+    /// already follows the pointer, so it is the one place that knows.
+    private func updatePanelHover(at point: CGPoint) {
+        guard let actionBar, !actionBar.isHidden else { return }
+        actionBar.setPointerInside(actionBar.frame.contains(point))
     }
 
     private func clearHint() {
