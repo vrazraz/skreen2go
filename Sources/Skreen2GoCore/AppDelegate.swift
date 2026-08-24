@@ -39,6 +39,34 @@ final class HotKeyMonitor {
     private static var nextIdentifier: UInt32 = 1
     private static let signature: OSType = 0x534B_524E // 'SKRN'
 
+    /// One Carbon handler for the whole process, shared by every monitor.
+    ///
+    /// Installing it per instance looks harmless and is not: a second
+    /// `InstallEventHandler` with the same function, target and event type returns
+    /// `eventHandlerAlreadyInstalledErr` (-9866), and the monitor then gave up before it
+    /// ever reached `RegisterEventHotKey`. That is what stopped the recording hot key from
+    /// registering as soon as there were two of them.
+    private static var sharedEventHandler: EventHandlerRef?
+
+    private static func installSharedEventHandler() -> OSStatus {
+        guard sharedEventHandler == nil else { return noErr }
+        var spec = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        var handler: EventHandlerRef?
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            skreenHotKeyHandler,
+            1,
+            &spec,
+            nil,
+            &handler
+        )
+        if status == noErr { sharedEventHandler = handler }
+        return status
+    }
+
     private let settings: SettingsStore
     /// Which of the app's hot keys this monitor owns. A key path rather than a fixed
     /// combination, so the monitor re-reads the current value on every reinstall.
@@ -47,7 +75,6 @@ final class HotKeyMonitor {
     private let identifier: UInt32
 
     private var hotKeyRef: EventHotKeyRef?
-    private var eventHandler: EventHandlerRef?
     private(set) var registeredCombination: HotKeyCombination?
 
     init(
@@ -80,21 +107,8 @@ final class HotKeyMonitor {
 
         uninstall()
 
-        if eventHandler == nil {
-            var spec = EventTypeSpec(
-                eventClass: OSType(kEventClassKeyboard),
-                eventKind: UInt32(kEventHotKeyPressed)
-            )
-            let status = InstallEventHandler(
-                GetApplicationEventTarget(),
-                skreenHotKeyHandler,
-                1,
-                &spec,
-                nil,
-                &eventHandler
-            )
-            guard status == noErr else { return .failed(status) }
-        }
+        let handlerStatus = HotKeyMonitor.installSharedEventHandler()
+        guard handlerStatus == noErr else { return .failed(handlerStatus) }
 
         hotKeyCallbacks[identifier] = handler
         var ref: EventHotKeyRef?
@@ -124,15 +138,15 @@ final class HotKeyMonitor {
         registeredCombination = nil
     }
 
+    /// The shared event handler is deliberately left installed: it belongs to the process,
+    /// not to this monitor, and removing it here would break whichever other monitor is
+    /// still registered. It goes away with the process.
     func tearDown() {
         uninstall()
-        if let eventHandler { RemoveEventHandler(eventHandler) }
-        eventHandler = nil
     }
 
     deinit {
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
-        if let eventHandler { RemoveEventHandler(eventHandler) }
         hotKeyCallbacks[identifier] = nil
     }
 }
@@ -458,12 +472,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !reportedHotKeyFailures.contains(role) else { return }
         reportedHotKeyFailures.insert(role)
 
+        // Never modal from inside `applicationDidFinishLaunching`. The app is `.accessory`
+        // and has not activated, so the alert stays behind everything while its nested
+        // modal loop stops the menu bar icon from answering a single click — the app looks
+        // frozen, and the one thing the alert suggests, opening Settings, is unreachable.
+        DispatchQueue.main.async { [weak self] in
+            self?.presentHotKeyFailure(status: status, combination: hotKey)
+        }
+    }
+
+    private func presentHotKeyFailure(status: OSStatus, combination hotKey: HotKeyCombination) {
         // Named from the key that actually failed — reading it back off `settings.hotKey`
         // would blame the screenshot combination for the recording key's failure.
         let combination = HotKeyFormatter.string(
             keyCode: hotKey.keyCode,
             modifiers: hotKey.modifiers
         )
+        // Without this the alert opens behind whatever is frontmost and cannot be answered.
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "error.hotKey.title".localized("Hot key not registered")
         alert.informativeText = "error.hotKey.body".localized(

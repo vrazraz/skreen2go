@@ -2759,4 +2759,53 @@ struct RegressionTests {
 
         #expect(requests.first?.windowID == 99)
     }
+
+    // MARK: - Two hot keys in one process
+
+    @Test("Both hot key monitors register, not just the first")
+    func twoHotKeyMonitorsCanCoexist() {
+        let settings = makeSettings()
+        // Obscure combinations, so the test does not fight a running copy of the app for
+        // the real ones.
+        settings.hotKey = HotKeyCombination(keyCode: 105, modifiers: [.control, .shift, .option])
+        settings.recordingHotKey = HotKeyCombination(keyCode: 107, modifiers: [.control, .shift, .option])
+
+        let screenshot = HotKeyMonitor(settings: settings, combination: \.hotKey) {}
+        let recording = HotKeyMonitor(settings: settings, combination: \.recordingHotKey) {}
+        defer {
+            screenshot.tearDown()
+            recording.tearDown()
+        }
+
+        #expect(screenshot.install() == .registered)
+        // The second monitor used to install its own application-wide Carbon handler for
+        // the same event on the same target, which returns eventHandlerAlreadyInstalledErr
+        // (-9866) and made it give up before ever reaching RegisterEventHotKey. The
+        // recording hot key silently never worked, and the failure alert wedged the app.
+        #expect(recording.install() == .registered)
+
+        #expect(screenshot.registeredCombination == settings.hotKey)
+        #expect(recording.registeredCombination == settings.recordingHotKey)
+        #expect(screenshot.registeredCombination != recording.registeredCombination)
+    }
+
+    @Test("A monitor tearing down leaves the other one working")
+    func tearingDownOneMonitorLeavesTheOther() {
+        let settings = makeSettings()
+        settings.hotKey = HotKeyCombination(keyCode: 109, modifiers: [.control, .shift, .option])
+        settings.recordingHotKey = HotKeyCombination(keyCode: 111, modifiers: [.control, .shift, .option])
+
+        let screenshot = HotKeyMonitor(settings: settings, combination: \.hotKey) {}
+        let recording = HotKeyMonitor(settings: settings, combination: \.recordingHotKey) {}
+        defer { recording.tearDown() }
+
+        #expect(screenshot.install() == .registered)
+        #expect(recording.install() == .registered)
+
+        // The shared handler belongs to the process, so one monitor going away must not
+        // take the other one's hot key with it.
+        screenshot.tearDown()
+        #expect(recording.registeredCombination == settings.recordingHotKey)
+        #expect(recording.install() == .unchanged)
+    }
 }
