@@ -1926,6 +1926,16 @@ final class CaptureController {
         let area = payload.area
         let annotations = payload.annotations
         let window = payload.window
+        if action == .copy, settings.copyAnimation == .hand {
+            // On the click, not on delivery. Between the two sit the overlay teardown and
+            // an asynchronous screen capture, and a hand that waits for all of that reads
+            // as a delayed reaction rather than an answer to the button.
+            //
+            // Safe to have on screen while the shot is taken: an area capture is filtered
+            // with `excludingApplications` set to this process, so our own panels are left
+            // out of the image the same way the overlay is.
+            HandFlourish.shared.play(over: area)
+        }
         runCapture(
             produce: { [capture] in
                 if let window {
@@ -1940,7 +1950,11 @@ final class CaptureController {
                     // The full editor keeps the annotations drawn on the overlay.
                     self.onImageCaptured?(image, area, annotations)
                 case .copy:
-                    CaptureFlash.shared.fly(image, from: area)
+                    // The flight needs the finished image, so it can only start here; the
+                    // hand, when it is the one chosen, went ahead of it at the click.
+                    if self.settings.copyAnimation == .flight {
+                        CaptureFlash.shared.fly(image, from: area)
+                    }
                     self.copy(image, annotations: annotations)
                 case .save:
                     CaptureFlash.shared.fly(image, from: area)

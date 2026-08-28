@@ -42,6 +42,24 @@ enum InterfaceLanguage: String, CaseIterable {
     }
 }
 
+/// What plays when a screenshot goes to the clipboard.
+///
+/// One or the other, never both: two flourishes over the same moment compete for the eye
+/// and neither is read properly.
+enum CopyAnimation: String, CaseIterable {
+    case hand
+    case flight
+
+    /// Shown in the settings menu. Kept apart from `rawValue`, which is a stable
+    /// identifier written to disk.
+    var title: String {
+        switch self {
+        case .hand: return "copyAnimation.hand".localized("Hand")
+        case .flight: return "copyAnimation.flight".localized("Screenshot flying to the menu bar")
+        }
+    }
+}
+
 enum CursorStyle: String, CaseIterable {
     case arrow
     case pointer
@@ -328,6 +346,14 @@ final class SettingsStore {
         notify()
     }
 
+    var copyAnimation: CopyAnimation {
+        get {
+            CopyAnimation(rawValue: defaults.string(forKey: Key.copyAnimation) ?? CopyAnimation.hand.rawValue)
+                ?? .hand
+        }
+        set { defaults.set(newValue.rawValue, forKey: Key.copyAnimation); notify() }
+    }
+
     var outputFormat: OutputFormat {
         get { OutputFormat(rawValue: defaults.string(forKey: Key.outputFormat) ?? OutputFormat.png.rawValue) ?? .png }
         set { defaults.set(newValue.rawValue, forKey: Key.outputFormat); notify() }
@@ -550,6 +576,7 @@ final class SettingsStore {
         static let recordsMicrophone = "recordsMicrophone"
         static let showsCursorInRecording = "showsCursorInRecording"
         static let showsClicksInRecording = "showsClicksInRecording"
+        static let copyAnimation = "copyAnimation"
         static let outputFormat = "outputFormat"
         static let outputFolderPath = "outputFolderPath"
         static let outputFolderBookmark = "outputFolderBookmark"
@@ -573,7 +600,8 @@ final class SettingsStore {
             strokeOpacity, textSize, textOpacity, textBold, blurRadius,
             showNotifications, launchAtLogin, interfaceLanguage,
             recordingHotKeyKeyCode, recordingHotKeyModifiers, recordsSystemAudio,
-            recordsMicrophone, showsCursorInRecording, showsClicksInRecording
+            recordsMicrophone, showsCursorInRecording, showsClicksInRecording,
+            copyAnimation
         ]
     }
 }

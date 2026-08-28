@@ -130,6 +130,26 @@ if [[ ! -d "$resource_bundle" ]]; then
 fi
 cp -R "$resource_bundle" "$app_dir/Contents/Resources/"
 
+# The Rive runtime ships as a binary framework. SwiftPM leaves it beside the executable
+# and links it through @rpath, so the bundle has to carry both the framework and a path
+# that finds it once the binary has moved into Contents/MacOS.
+rive_framework="$bin_dir/RiveRuntime.framework"
+if [[ ! -d "$rive_framework" ]]; then
+    print -u2 "Rive runtime not found: $rive_framework"
+    exit 2
+fi
+mkdir -p "$app_dir/Contents/Frameworks"
+cp -R "$rive_framework" "$app_dir/Contents/Frameworks/"
+# Drop the rpath pointing back into .build. Left in place it resolves on the machine that
+# did the build, which would hide a framework missing from the bundle until someone else
+# opened the app.
+for stale_rpath in ${(f)"$(otool -l "$app_dir/Contents/MacOS/Skreen2Go" \
+    | awk '/LC_RPATH/{f=1} f && /path /{print $2; f=0}' \
+    | grep -F "$project_dir/.build" || true)"}; do
+    install_name_tool -delete_rpath "$stale_rpath" "$app_dir/Contents/MacOS/Skreen2Go"
+done
+install_name_tool -add_rpath "@executable_path/../Frameworks" "$app_dir/Contents/MacOS/Skreen2Go"
+
 for language in $info_plist_languages; do
     mkdir -p "$app_dir/Contents/Resources/$language.lproj"
     cp "$project_dir/Resources/$language.lproj/InfoPlist.strings" \
@@ -163,6 +183,8 @@ if [[ "$signing_identity" != "-" ]]; then
 fi
 # Nested bundles have to be signed before the enclosing app.
 codesign --force --sign "$signing_identity" "$app_dir/Contents/Resources/Skreen2Go_Skreen2GoCore.bundle"
+# Rewriting the rpath above invalidated whatever signature the framework arrived with.
+codesign --force --sign "$signing_identity" "$app_dir/Contents/Frameworks/RiveRuntime.framework"
 codesign "${sign_args[@]}" "$app_dir"
 codesign --verify --deep --strict --verbose=2 "$app_dir"
 plutil -lint "$app_dir/Contents/Info.plist" >/dev/null

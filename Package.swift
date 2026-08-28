@@ -13,9 +13,16 @@ let package = Package(
     products: [
         .executable(name: "Skreen2Go", targets: ["Skreen2Go"])
     ],
+    dependencies: [
+        // The hand that reaches in when a screenshot is copied was drawn in Rive, and a
+        // bone-rigged mesh is not something Core Animation can replay: the runtime is the
+        // only way to get the deformation the animation was authored with.
+        .package(url: "https://github.com/rive-app/rive-ios.git", from: "6.24.0")
+    ],
     targets: [
         .target(
             name: "Skreen2GoCore",
+            dependencies: [.product(name: "RiveRuntime", package: "rive-ios")],
             path: "Sources/Skreen2GoCore",
             resources: [.process("Resources")]
         ),

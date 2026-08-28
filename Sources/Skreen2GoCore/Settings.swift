@@ -85,6 +85,7 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
     private var hotKeyButton: NSButton!
     private var folderField: NSTextField!
     private var formatPopup: NSPopUpButton!
+    private var copyAnimationPopup: NSPopUpButton!
     private var languagePopup: NSPopUpButton!
     private var colorWell: NSColorWell!
     private var strokeThicknessSlider: NSSlider!
@@ -233,6 +234,15 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         formatPopup.target = self
         formatPopup.action = #selector(formatChanged(_:))
         stack.addArrangedSubview(row(label: "settings.format".localized("File format"), control: formatPopup))
+
+        copyAnimationPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        copyAnimationPopup.addItems(withTitles: CopyAnimation.allCases.map(\.title))
+        copyAnimationPopup.target = self
+        copyAnimationPopup.action = #selector(copyAnimationChanged(_:))
+        stack.addArrangedSubview(row(
+            label: "settings.copyAnimation".localized("Copy animation"),
+            control: copyAnimationPopup
+        ))
 
         colorWell = NSColorWell(frame: .zero)
         colorWell.target = self
@@ -385,6 +395,11 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
         recordingClicksCheckbox.state = settings.showsClicksInRecording ? .on : .off
         folderField.stringValue = settings.outputFolderURL.path
         formatPopup.selectItem(withTitle: settings.outputFormat.rawValue)
+        // By position rather than by title: the titles are translated, so matching on them
+        // would stop working the moment the interface language changes.
+        if let index = CopyAnimation.allCases.firstIndex(of: settings.copyAnimation) {
+            copyAnimationPopup.selectItem(at: index)
+        }
         selectLanguage(settings.interfaceLanguage)
         colorWell.color = settings.defaultColor
         strokeThicknessSlider.doubleValue = Double(settings.strokeThickness)
@@ -524,6 +539,12 @@ final class SettingsPanelController: NSWindowController, NSWindowDelegate {
                 ScreenshotOutput.showError("error.folder.bookmark".localized("Could not remember the save folder: %@", error.localizedDescription))
             }
         }
+    }
+
+    @objc private func copyAnimationChanged(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem
+        guard CopyAnimation.allCases.indices.contains(index) else { return }
+        settings.copyAnimation = CopyAnimation.allCases[index]
     }
 
     @objc private func formatChanged(_ sender: NSPopUpButton) {

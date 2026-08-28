@@ -3046,4 +3046,111 @@ struct RegressionTests {
         #expect(recording.registeredCombination == settings.recordingHotKey)
         #expect(recording.install() == .unchanged)
     }
+
+    // MARK: - The hand that plays when a shot is copied
+
+    @Test("The flourish keeps the proportions it was drawn at")
+    func handFlourishKeepsArtboardProportions() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let frame = HandFlourish.frame(over: CGRect(x: 600, y: 400, width: 200, height: 150), on: screen)
+
+        let authored = HandFlourish.artboardSize.width / HandFlourish.artboardSize.height
+        #expect(isClose(frame.width / frame.height, authored, tolerance: 0.001))
+    }
+
+    @Test("The hand plays over what was just captured, lifted a little")
+    func handFlourishCentresOnTheCapture() {
+        let screen = CGRect(x: 0, y: 0, width: 3000, height: 2000)
+        let capture = CGRect(x: 1400, y: 900, width: 200, height: 150)
+        let frame = HandFlourish.frame(over: capture, on: screen)
+
+        #expect(isClose(frame.midX, capture.midX, tolerance: 0.001))
+        // The hand reaches up out of the lower half of the artboard, so dead centre reads
+        // as too low. Lifted, but nowhere near far enough to leave the capture behind.
+        #expect(frame.midY > capture.midY)
+        #expect(isClose(frame.midY, capture.midY + frame.height * HandFlourish.verticalLift, tolerance: 0.001))
+    }
+
+    @Test("A shot taken in the corner still gets a whole hand")
+    func handFlourishStaysOnScreen() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+
+        for capture in [
+            CGRect(x: 0, y: 0, width: 40, height: 40),
+            CGRect(x: 1472, y: 942, width: 40, height: 40),
+            CGRect(x: 0, y: 942, width: 40, height: 40),
+            CGRect(x: 1472, y: 0, width: 40, height: 40)
+        ] {
+            let frame = HandFlourish.frame(over: capture, on: screen)
+            #expect(screen.contains(frame), "\(frame) escapes \(screen)")
+        }
+    }
+
+    @Test("A screen too small for the flourish centres it instead of pushing it off")
+    func handFlourishCentresWhenWiderThanTheScreen() {
+        // The cap means the flourish can be wider than a very short screen is tall, which
+        // inverts the clamp: it must not answer with a frame outside the screen entirely.
+        let screen = CGRect(x: 0, y: 0, width: 900, height: 200)
+        let frame = HandFlourish.frame(over: CGRect(x: 100, y: 20, width: 50, height: 50), on: screen)
+
+        #expect(isClose(frame.midY, screen.midY, tolerance: 0.001))
+        #expect(frame.width <= screen.width)
+    }
+
+    @Test("The flourish is anchored on the screen the capture was taken from")
+    func handFlourishFollowsTheCaptureScreen() {
+        // A second display to the right: the frame must land on it, not back on the first.
+        let secondary = CGRect(x: 1512, y: 0, width: 1920, height: 1080)
+        let capture = CGRect(x: 2400, y: 500, width: 300, height: 200)
+        let frame = HandFlourish.frame(over: capture, on: secondary)
+
+        #expect(secondary.contains(frame))
+        #expect(frame.minX >= secondary.minX)
+    }
+
+    // MARK: - Choosing which flourish plays on copy
+
+    @Test("Copying starts out showing the hand")
+    func copyAnimationDefaultsToTheHand() {
+        #expect(makeSettings().copyAnimation == .hand)
+    }
+
+    @Test("The chosen animation survives a round trip through the store")
+    func copyAnimationRoundTrips() {
+        let settings = makeSettings()
+        for choice in CopyAnimation.allCases {
+            settings.copyAnimation = choice
+            #expect(settings.copyAnimation == choice)
+        }
+    }
+
+    @Test("Reset puts the copy animation back to the hand")
+    func resetClearsCopyAnimation() {
+        // Also what catches the key being left out of `Key.all`, which is maintained by
+        // hand and fails silently.
+        let settings = makeSettings()
+        settings.copyAnimation = .flight
+        #expect(settings.copyAnimation == .flight)
+
+        settings.reset()
+        #expect(settings.copyAnimation == .hand)
+    }
+
+    @Test("An unreadable stored value falls back rather than losing the animation")
+    func copyAnimationSurvivesNonsenseOnDisk() {
+        let suiteName = "Skreen2GoTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults.set("semaphore", forKey: "copyAnimation")
+
+        #expect(SettingsStore(defaults: defaults).copyAnimation == .hand)
+    }
+
+    @Test("Both choices are offered, and each one names itself")
+    func copyAnimationOffersBothChoices() {
+        #expect(CopyAnimation.allCases.count == 2)
+        let titles = Set(CopyAnimation.allCases.map(\.title))
+        #expect(titles.count == 2, "the two choices share a title")
+        #expect(titles.allSatisfy { !$0.isEmpty })
+    }
 }

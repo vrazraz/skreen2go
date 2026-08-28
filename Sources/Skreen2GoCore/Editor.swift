@@ -853,6 +853,11 @@ final class EditorPanelController: NSWindowController, NSWindowDelegate {
     }
 
     private func copyResult() {
+        // Ahead of the render for the same reason as on the capture panel: rendering and
+        // encoding hold this thread, and an animation queued behind them starts late.
+        if settings.copyAnimation == .hand {
+            HandFlourish.shared.play(over: selectionFrame)
+        }
         guard let data = canvas.renderedData(format: .png) else {
             showError("error.clipboard.prepare".localized("Could not prepare the image for the clipboard."))
             return

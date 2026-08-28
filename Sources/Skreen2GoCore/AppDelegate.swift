@@ -190,6 +190,10 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         CaptureFlash.shared.destinationProvider = { [weak self] in
             self?.statusItem?.button?.window?.frame
         }
+        // Parsing the animation and standing up its Metal layer is work worth doing now:
+        // done lazily it would land on the first copied screenshot, which is the one
+        // moment the flourish must not stutter.
+        HandFlourish.shared.prepare()
         captureController.onShowSettings = { [weak self] in
             // Called while the capture overlay is up, so it has to sit above it.
             self?.presentSettings(modal: true)

@@ -59,6 +59,9 @@
 "settings.folder" = "Save folder";
 "settings.folder.choose" = "Choose…";
 "settings.format" = "File format";
+"settings.copyAnimation" = "Copy animation";
+"copyAnimation.hand" = "Hand";
+"copyAnimation.flight" = "Screenshot flying to the menu bar";
 "settings.language" = "Language";
 "settings.language.system" = "System";
 "settings.color" = "Default color";
