@@ -2,8 +2,6 @@
 
 Нативное macOS-приложение для скриншотов с аннотациями и записи экрана. Живёт в menu bar, без окна в Dock. Обработка полностью локальная — ни снимки, ни записи не покидают компьютер.
 
-Полное описание поведения — в [PRD.md](PRD.md).
-
 ## Требования
 
 - macOS 15+
@@ -138,6 +136,7 @@ Sources/Skreen2GoCore/       вся логика (библиотека, чтоб
   Settings.swift             окно настроек, автозапуск
   Localization.swift         поиск строк и принудительная смена языка
   Toast.swift                подтверждение действия, вспышка захвата
+  HandFlourish.swift         анимация руки при копировании в буфер (Rive)
   Resources/{en,ru}.lproj/   строки интерфейса
 Sources/Skreen2Go/           точка входа
 Resources/                   Info.plist, entitlements, privacy manifest, иконка
