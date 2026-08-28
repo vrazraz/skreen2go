@@ -25,6 +25,11 @@
 	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<!-- Answers the export-compliance question once, in the build, instead of in a
+	     dialog on every upload to App Store Connect. The app has no encryption of its
+	     own and makes no network connections at all. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
 	<key>LSUIElement</key>
