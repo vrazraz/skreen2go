@@ -140,6 +140,11 @@ if [[ ! -d "$rive_framework" ]]; then
 fi
 mkdir -p "$app_dir/Contents/Frameworks"
 cp -R "$rive_framework" "$app_dir/Contents/Frameworks/"
+# Headers and module maps are build-time material. Three megabytes of them inside a
+# shipped app buys nothing, and the signature is regenerated below anyway.
+embedded_framework="$app_dir/Contents/Frameworks/RiveRuntime.framework"
+rm -rf "$embedded_framework/Versions/A/Headers" "$embedded_framework/Versions/A/Modules"
+rm -f "$embedded_framework/Headers" "$embedded_framework/Modules"
 # Drop the rpath pointing back into .build. Left in place it resolves on the machine that
 # did the build, which would hide a framework missing from the bundle until someone else
 # opened the app.

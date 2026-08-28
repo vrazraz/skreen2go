@@ -28,3 +28,18 @@ jobs:
           plutil -lint Sources/Skreen2GoCore/Resources/*.lproj/Localizable.strings
           test -f Resources/AppIcon.icns
           git diff --check
+
+      - name: Assemble the app bundle
+        run: ./Scripts/build-app.sh
+
+      - name: Check what the bundle actually contains
+        run: |
+          codesign --verify --deep --strict --verbose=2 dist/Skreen2Go.app
+          # The pieces the script assembles by hand, each of which has gone missing
+          # before or would go missing silently.
+          test -x dist/Skreen2Go.app/Contents/MacOS/Skreen2Go
+          test -d dist/Skreen2Go.app/Contents/Frameworks/RiveRuntime.framework
+          test -f dist/Skreen2Go.app/Contents/Resources/Skreen2Go_Skreen2GoCore.bundle/hand.riv
+          test -f dist/Skreen2Go.app/Contents/Resources/PrivacyInfo.xcprivacy
+          otool -l dist/Skreen2Go.app/Contents/MacOS/Skreen2Go \
+            | grep -q '@executable_path/../Frameworks'

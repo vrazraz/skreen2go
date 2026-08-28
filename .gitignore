@@ -1,7 +1,6 @@
 # SwiftPM build output
 .build/
 .swiftpm/
-Package.resolved
 
 # Assembled .app bundle
 dist/
