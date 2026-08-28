@@ -353,15 +353,19 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             menu.addItem(revealItem)
         }
 
-        let settingsItem = NSMenuItem(title: "menu.settings".localized("Settings…"), action: #selector(showSettingsFromMenu), keyEquivalent: ",")
-        settingsItem.keyEquivalentModifierMask = [.command]
+        // No key equivalents anywhere in this menu. One would be live rather than
+        // decorative — AppKit matches it while the menu is open — and the screenshot hot
+        // key is already registered system-wide, so the same press would arrive twice and
+        // `start`, which reads a second trigger as "dismiss the overlay", would cancel
+        // itself out. Rather than have shortcuts on some items and not the one that would
+        // matter, the menu shows none.
+        let settingsItem = NSMenuItem(title: "menu.settings".localized("Settings…"), action: #selector(showSettingsFromMenu), keyEquivalent: "")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "menu.quit".localized("Quit"), action: #selector(terminate), keyEquivalent: "q")
-        quitItem.keyEquivalentModifierMask = [.command]
+        let quitItem = NSMenuItem(title: "menu.quit".localized("Quit"), action: #selector(terminate), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
 
