@@ -113,6 +113,57 @@ var tests = new (string Name, Action Run)[]
         }
         catch (ArgumentException) { }
     }),
+    ("Settings round-trip image format, folder and audio choices", () =>
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Skreen2GoSettingsTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var file = Path.Combine(folder, "settings.json");
+            var chosen = new AppSettings
+            {
+                OutputFolder = folder,
+                ScreenshotFormat = ScreenshotFormat.Jpeg,
+                RecordMicrophone = true,
+                RecordSystemAudio = false
+            };
+            SettingsStore.Save(file, chosen);
+            var loaded = SettingsStore.Load(file);
+            Equal(folder, loaded.OutputFolder);
+            Equal(ScreenshotFormat.Jpeg, loaded.ScreenshotFormat);
+            Equal(true, loaded.RecordMicrophone);
+            Equal(false, loaded.RecordSystemAudio);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }),
+    ("Settings reject identical global hotkeys", () =>
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Skreen2GoSettingsTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var settings = new AppSettings { RecordingHotkey = AppSettings.Default.CaptureHotkey };
+            try
+            {
+                SettingsStore.Save(Path.Combine(folder, "settings.json"), settings);
+                throw new Exception("Expected duplicate hotkey rejection");
+            }
+            catch (ArgumentException) { }
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }),
+    ("A damaged settings file falls back to defaults", () =>
+    {
+        var file = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(file, "{broken json");
+            Equal(AppSettings.Default.CaptureHotkey, SettingsStore.Load(file).CaptureHotkey);
+        }
+        finally { File.Delete(file); }
+    }),
 };
 
 if (Environment.GetEnvironmentVariable("SKREEN2GO_TEST_RECORDING") == "1")

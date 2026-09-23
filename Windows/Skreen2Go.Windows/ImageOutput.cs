@@ -88,7 +88,7 @@ public static class ImageOutput
                 break;
             case AnnotationKind.Text:
                 using (var brush = new SolidBrush(color))
-                using (var font = new Font("Segoe UI", Math.Max(8, annotation.Thickness * 6)))
+                using (var font = new Font("Segoe UI", Math.Max(8, annotation.FontSize)))
                     graphics.DrawString(annotation.Text, font, brush,
                         annotation.Rect.X, annotation.Rect.Y);
                 break;

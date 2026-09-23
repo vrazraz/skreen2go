@@ -10,7 +10,8 @@ public sealed record Annotation(
     string Text,
     uint Color,
     float Thickness,
-    float Opacity);
+    float Opacity,
+    float FontSize = 24);
 
 public static class AnnotationGeometry
 {

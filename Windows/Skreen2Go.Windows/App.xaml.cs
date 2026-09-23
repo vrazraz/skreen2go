@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using Skreen2Go.Windows.Core;
 using Forms = System.Windows.Forms;
 using MessageBox = System.Windows.MessageBox;
@@ -16,9 +17,12 @@ public partial class App : System.Windows.Application
     private CaptureWindow? captureWindow;
     private DesktopCapture? desktop;
     private Forms.ToolStripMenuItem? recordingMenuItem;
+    private Forms.ToolStripMenuItem? systemAudioItem;
+    private Forms.ToolStripMenuItem? microphoneItem;
+    private SettingsWindow? settingsWindow;
+    private AppSettings settings = AppSettings.Default;
+    private bool updatingTraySettings;
     private bool selectingRecording;
-    private bool captureSystemAudio = true;
-    private bool captureMicrophone;
     private CancellationTokenSource? countdown;
     private ScreenRecordingService? recording;
     private bool finalizingRecording;
@@ -26,6 +30,7 @@ public partial class App : System.Windows.Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        settings = SettingsStore.Load(SettingsStore.DefaultPath);
         tray = new Forms.NotifyIcon
         {
             Icon = SystemIcons.Application,
@@ -38,14 +43,16 @@ public partial class App : System.Windows.Application
         recordingMenuItem = new Forms.ToolStripMenuItem("Record area  Ctrl+Shift+R", null,
             (_, _) => Dispatcher.Invoke(OnRecordShortcut));
         tray.ContextMenuStrip.Items.Add(recordingMenuItem);
-        var systemAudioItem = new Forms.ToolStripMenuItem("Record system audio")
-        { CheckOnClick = true, Checked = captureSystemAudio };
-        systemAudioItem.CheckedChanged += (_, _) => captureSystemAudio = systemAudioItem.Checked;
+        systemAudioItem = new Forms.ToolStripMenuItem("Record system audio")
+        { CheckOnClick = true, Checked = settings.RecordSystemAudio };
+        systemAudioItem.CheckedChanged += (_, _) => SaveQuickAudioSettings();
         tray.ContextMenuStrip.Items.Add(systemAudioItem);
-        var microphoneItem = new Forms.ToolStripMenuItem("Record microphone")
-        { CheckOnClick = true, Checked = captureMicrophone };
-        microphoneItem.CheckedChanged += (_, _) => captureMicrophone = microphoneItem.Checked;
+        microphoneItem = new Forms.ToolStripMenuItem("Record microphone")
+        { CheckOnClick = true, Checked = settings.RecordMicrophone };
+        microphoneItem.CheckedChanged += (_, _) => SaveQuickAudioSettings();
         tray.ContextMenuStrip.Items.Add(microphoneItem);
+        tray.ContextMenuStrip.Items.Add("Settings…", null,
+            (_, _) => Dispatcher.Invoke(OpenSettings));
         tray.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Dispatcher.Invoke(ExitAsync));
         tray.DoubleClick += (_, _) => Dispatcher.Invoke(BeginCapture);
 
@@ -56,14 +63,14 @@ public partial class App : System.Windows.Application
         hotkeyWindow = new HwndSource(parameters);
         hotkeyWindow.AddHook(HotkeyHook);
         if (!NativeMethods.RegisterHotKey(hotkeyWindow.Handle, 1,
-            NativeMethods.ModControl | NativeMethods.ModShift, NativeMethods.VkS))
+            settings.CaptureHotkey.Modifiers, (uint)settings.CaptureHotkey.VirtualKey))
         {
             tray.ShowBalloonTip(4000, "Skreen2Go",
                 "Ctrl+Shift+S is in use. Capture is available from the tray menu.",
                 Forms.ToolTipIcon.Warning);
         }
         if (!NativeMethods.RegisterHotKey(hotkeyWindow.Handle, 2,
-            NativeMethods.ModControl | NativeMethods.ModShift, NativeMethods.VkR))
+            settings.RecordingHotkey.Modifiers, (uint)settings.RecordingHotkey.VirtualKey))
         {
             tray.ShowBalloonTip(4000, "Skreen2Go",
                 "Ctrl+Shift+R is in use. Recording is available from the tray menu.",
@@ -91,6 +98,102 @@ public partial class App : System.Windows.Application
     {
         if (captureWindow is not null) { captureWindow.Activate(); return; }
         OpenSelection(recordingMode: false);
+    }
+
+    private void OpenSettings()
+    {
+        if (settingsWindow is not null) { settingsWindow.Activate(); return; }
+        var window = new SettingsWindow(settings);
+        settingsWindow = window;
+        window.Closed += (_, _) => settingsWindow = null;
+        if (window.ShowDialog() != true || window.Result is null) return;
+        try { ApplySettings(window.Result); }
+        catch (Exception error)
+        {
+            MessageBox.Show($"Cannot save settings: {error.Message}", "Skreen2Go",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void SaveQuickAudioSettings()
+    {
+        if (updatingTraySettings || systemAudioItem is null || microphoneItem is null) return;
+        var changed = settings with
+        {
+            RecordSystemAudio = systemAudioItem.Checked,
+            RecordMicrophone = microphoneItem.Checked
+        };
+        try
+        {
+            SettingsStore.Save(SettingsStore.DefaultPath, changed);
+            settings = changed;
+        }
+        catch (Exception error)
+        {
+            updatingTraySettings = true;
+            systemAudioItem.Checked = settings.RecordSystemAudio;
+            microphoneItem.Checked = settings.RecordMicrophone;
+            updatingTraySettings = false;
+            MessageBox.Show($"Cannot save audio settings: {error.Message}", "Skreen2Go",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ApplySettings(AppSettings proposed)
+    {
+        var handle = hotkeyWindow!.Handle;
+        NativeMethods.UnregisterHotKey(handle, 1);
+        NativeMethods.UnregisterHotKey(handle, 2);
+        var first = NativeMethods.RegisterHotKey(handle, 1,
+            proposed.CaptureHotkey.Modifiers, (uint)proposed.CaptureHotkey.VirtualKey);
+        var second = first && NativeMethods.RegisterHotKey(handle, 2,
+            proposed.RecordingHotkey.Modifiers, (uint)proposed.RecordingHotkey.VirtualKey);
+        if (!first || !second)
+        {
+            NativeMethods.UnregisterHotKey(handle, 1);
+            NativeMethods.UnregisterHotKey(handle, 2);
+            RegisterCurrentHotkeys(handle);
+            throw new InvalidOperationException("A chosen shortcut is already in use.");
+        }
+        try
+        {
+            SettingsStore.Save(SettingsStore.DefaultPath, proposed);
+            ConfigureAutostart(proposed.StartWithWindows);
+            settings = proposed;
+            updatingTraySettings = true;
+            systemAudioItem!.Checked = proposed.RecordSystemAudio;
+            microphoneItem!.Checked = proposed.RecordMicrophone;
+            updatingTraySettings = false;
+        }
+        catch
+        {
+            NativeMethods.UnregisterHotKey(handle, 1);
+            NativeMethods.UnregisterHotKey(handle, 2);
+            RegisterCurrentHotkeys(handle);
+            throw;
+        }
+    }
+
+    private void RegisterCurrentHotkeys(IntPtr handle)
+    {
+        NativeMethods.RegisterHotKey(handle, 1, settings.CaptureHotkey.Modifiers,
+            (uint)settings.CaptureHotkey.VirtualKey);
+        NativeMethods.RegisterHotKey(handle, 2, settings.RecordingHotkey.Modifiers,
+            (uint)settings.RecordingHotkey.VirtualKey);
+    }
+
+    private static void ConfigureAutostart(bool enabled)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(
+            @"Software\Microsoft\Windows\CurrentVersion\Run", writable: true)
+            ?? throw new InvalidOperationException("Cannot open the Windows startup settings.");
+        if (!enabled) { key.DeleteValue("Skreen2Go", throwOnMissingValue: false); return; }
+        var process = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Cannot find the application path.");
+        var command = Path.GetFileName(process).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase)
+            ? $"\"{process}\" \"{Environment.GetCommandLineArgs()[0]}\""
+            : $"\"{process}\"";
+        key.SetValue("Skreen2Go", command);
     }
 
     private void OpenSelection(bool recordingMode)
@@ -176,12 +279,12 @@ public partial class App : System.Windows.Application
             await Task.Delay(TimeSpan.FromSeconds(3), pending.Token);
             if (countdown != pending) return;
             countdown = null;
-            var folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+            var folder = settings.OutputFolder;
             var path = OutputNaming.NextPath(folder, "Recording", DateTimeOffset.Now,
                 File.Exists, ".mp4");
             recording = new ScreenRecordingService();
-            recording.Start(plan, path, captureSystemAudio, captureMicrophone);
+            recording.Start(plan, path, settings.RecordSystemAudio, settings.RecordMicrophone,
+                settings.RecordCursor, settings.RecordClicks);
             tray.Text = "Skreen2Go — recording";
             tray.Icon = SystemIcons.Error;
             recordingMenuItem.Text = "Stop recording  Ctrl+Shift+R";
@@ -248,7 +351,7 @@ public partial class App : System.Windows.Application
         try
         {
             var cropped = desktop.Crop(selection);
-            var editor = new EditorWindow(cropped);
+            var editor = new EditorWindow(cropped, settings);
             editor.Show();
         }
         catch (Exception error)

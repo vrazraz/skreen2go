@@ -12,7 +12,7 @@ public sealed class ScreenRecordingService : IDisposable
     public bool IsRecording => recorder is not null;
 
     public void Start(RecordingPlan plan, string path, bool captureSystemAudio,
-        bool captureMicrophone)
+        bool captureMicrophone, bool showCursor = true, bool showClicks = false)
     {
         if (recorder is not null) throw new InvalidOperationException("Recording is already active.");
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -22,7 +22,7 @@ public sealed class ScreenRecordingService : IDisposable
         {
             SourceRect = new ScreenRect(plan.SourceRect.X, plan.SourceRect.Y,
                 plan.SourceRect.Width, plan.SourceRect.Height),
-            IsCursorCaptureEnabled = true
+            IsCursorCaptureEnabled = showCursor
         };
         var audio = new AudioOptions { IsAudioEnabled = captureSystemAudio || captureMicrophone };
         if (captureSystemAudio) audio.AudioSources.Add(LoopbackAudioSource.Default);
@@ -36,6 +36,11 @@ public sealed class ScreenRecordingService : IDisposable
                 OutputFrameSize = new ScreenSize(plan.PixelWidth, plan.PixelHeight)
             },
             AudioOptions = audio,
+            MouseOptions = new MouseOptions
+            {
+                IsMousePointerEnabled = showCursor,
+                IsMouseClicksDetected = showClicks
+            },
             VideoEncoderOptions = new VideoEncoderOptions
             {
                 Framerate = 30,

@@ -15,15 +15,16 @@ namespace Skreen2Go.Windows;
 public partial class EditorWindow : Window
 {
     private readonly Bitmap source;
+    private readonly AppSettings settings;
     private readonly AnnotationSession session = new();
     private AnnotationKind tool = AnnotationKind.Arrow;
     private PointI? dragStart;
     private PointI? dragEnd;
-    private const uint Red = 0xFFFF4B66;
 
-    public EditorWindow(Bitmap source)
+    public EditorWindow(Bitmap source, AppSettings settings)
     {
         this.source = source;
+        this.settings = settings;
         InitializeComponent();
         ScreenshotImage.Source = ImageOutput.Preview(source);
         ImageSurface.Width = source.Width;
@@ -51,7 +52,9 @@ public partial class EditorWindow : Window
             if (prompt.ShowDialog() == true)
             {
                 session.Add(new Annotation(AnnotationKind.Text, default, default,
-                    new RectangleI(point.X, point.Y, 0, 0), prompt.Value, Red, 4, 1));
+                    new RectangleI(point.X, point.Y, 0, 0), prompt.Value,
+                    settings.AnnotationColor, settings.AnnotationThickness, 1,
+                    settings.TextSize));
                 DrawAnnotations();
             }
             return;
@@ -85,7 +88,7 @@ public partial class EditorWindow : Window
         if (dragStart is null || dragEnd is null) return null;
         var rect = SelectionGeometry.Normalize(dragStart.Value, dragEnd.Value);
         return new Annotation(tool, dragStart.Value, dragEnd.Value, rect,
-            "", Red, 3, 1);
+            "", settings.AnnotationColor, settings.AnnotationThickness, 1);
     }
 
     private void DrawAnnotations()
@@ -142,7 +145,7 @@ public partial class EditorWindow : Window
                 {
                     Text = annotation.Text,
                     Foreground = brush,
-                    FontSize = Math.Max(8, annotation.Thickness * 8),
+                    FontSize = annotation.FontSize,
                     FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
                 };
                 Canvas.SetLeft(text, annotation.Rect.X);
@@ -177,9 +180,9 @@ public partial class EditorWindow : Window
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        var folder = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
-        SaveTo(OutputNaming.NextPath(folder, "Screenshot", DateTimeOffset.Now, System.IO.File.Exists));
+        var extension = settings.ScreenshotFormat == ScreenshotFormat.Jpeg ? ".jpg" : ".png";
+        SaveTo(OutputNaming.NextPath(settings.OutputFolder, "Screenshot", DateTimeOffset.Now,
+            System.IO.File.Exists, extension));
     }
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
@@ -189,7 +192,8 @@ public partial class EditorWindow : Window
             Title = "Save screenshot",
             Filter = "PNG image|*.png|JPEG image|*.jpg",
             FileName = System.IO.Path.GetFileName(OutputNaming.NextPath(".", "Screenshot",
-                DateTimeOffset.Now, _ => false)),
+                DateTimeOffset.Now, _ => false,
+                settings.ScreenshotFormat == ScreenshotFormat.Jpeg ? ".jpg" : ".png")),
             OverwritePrompt = true
         };
         if (dialog.ShowDialog(this) == true) SaveTo(dialog.FileName, overwrite: true);
