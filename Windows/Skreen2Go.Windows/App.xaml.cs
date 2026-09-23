@@ -171,6 +171,7 @@ public partial class App : System.Windows.Application
             SettingsStore.Save(SettingsStore.DefaultPath, proposed);
             settings = proposed;
             Localizer.Apply(proposed.Language);
+            captureWindow?.ApplySettings(proposed);
             updatingTraySettings = true;
             systemAudioItem!.Checked = proposed.RecordSystemAudio;
             microphoneItem!.Checked = proposed.RecordMicrophone;
@@ -242,8 +243,10 @@ public partial class App : System.Windows.Application
         {
             desktop = DesktopCapture.Snapshot();
             selectingRecording = recordingMode;
-            captureWindow = new CaptureWindow(desktop, recordingMode);
-            captureWindow.CaptureAccepted += recordingMode ? OnRecordingSelected : OnCaptureAccepted;
+            captureWindow = new CaptureWindow(desktop, settings, recordingMode);
+            captureWindow.CaptureAccepted += OnCaptureAccepted;
+            captureWindow.RecordingAccepted += OnRecordingSelected;
+            captureWindow.SettingsRequested += OpenSettings;
             captureWindow.Closed += (_, _) =>
             {
                 captureWindow = null;
@@ -288,10 +291,26 @@ public partial class App : System.Windows.Application
         OpenSelection(recordingMode: true);
     }
 
-    private void OnRecordingSelected(RectangleI selection)
+    private void OnRecordingSelected(RectangleI selection,
+        bool systemAudio, bool microphone)
     {
         try
         {
+            if (settings.RecordSystemAudio != systemAudio ||
+                settings.RecordMicrophone != microphone)
+            {
+                var changed = settings with
+                {
+                    RecordSystemAudio = systemAudio,
+                    RecordMicrophone = microphone
+                };
+                SettingsStore.Save(SettingsStore.DefaultPath, changed);
+                settings = changed;
+                updatingTraySettings = true;
+                systemAudioItem!.Checked = systemAudio;
+                microphoneItem!.Checked = microphone;
+                updatingTraySettings = false;
+            }
             var displays = Forms.Screen.AllScreens.Select(screen =>
                 new RecordingDisplay(screen.DeviceName,
                     new RectangleI(screen.Bounds.X, screen.Bounds.Y,
@@ -386,13 +405,14 @@ public partial class App : System.Windows.Application
         Shutdown();
     }
 
-    private void OnCaptureAccepted(RectangleI selection)
+    private void OnCaptureAccepted(RectangleI selection,
+        IReadOnlyList<Annotation> annotations)
     {
         if (desktop is null) return;
         try
         {
             var cropped = desktop.Crop(selection);
-            var editor = new EditorWindow(cropped, settings);
+            var editor = new EditorWindow(cropped, settings, annotations);
             editor.Show();
         }
         catch (Exception error)

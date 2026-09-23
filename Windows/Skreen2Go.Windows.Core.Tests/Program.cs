@@ -15,6 +15,44 @@ var tests = new (string Name, Action Run)[]
         Equal(new RectangleI(50, 40, 150, 80),
             SelectionGeometry.ToBitmapLocal(new RectangleI(-450, 40, 150, 80),
                 new RectangleI(-500, 0, 1000, 500)))),
+    ("Live frame moves within the virtual desktop", () =>
+    {
+        var bounds = new RectangleI(-500, 0, 1000, 600);
+        var frame = new RectangleI(-400, 100, 200, 150);
+        Equal(new RectangleI(300, 450, 200, 150),
+            LiveSelectionGeometry.Move(frame, 1000, 1000, bounds));
+    }),
+    ("Live frame resizes by an edge and preserves minimum size", () =>
+    {
+        var bounds = new RectangleI(0, 0, 800, 600);
+        var frame = new RectangleI(100, 100, 200, 150);
+        Equal(new RectangleI(100, 100, 300, 150),
+            LiveSelectionGeometry.Resize(frame, SelectionHandle.Right,
+                new PointI(400, 230), bounds));
+        Equal(new RectangleI(292, 100, 8, 150),
+            LiveSelectionGeometry.Resize(frame, SelectionHandle.Left,
+                new PointI(500, 230), bounds));
+    }),
+    ("Live frame exposes eight resize handles", () =>
+    {
+        var frame = new RectangleI(100, 100, 200, 100);
+        Equal(SelectionHandle.TopLeft,
+            LiveSelectionGeometry.HandleAt(frame, new PointI(101, 102)));
+        Equal(SelectionHandle.Right,
+            LiveSelectionGeometry.HandleAt(frame, new PointI(300, 150)));
+        Equal((SelectionHandle?)null,
+            LiveSelectionGeometry.HandleAt(frame, new PointI(200, 150)));
+    }),
+    ("Floating bar stays on screen and prefers below the frame", () =>
+    {
+        var bounds = new RectangleI(0, 0, 800, 600);
+        Equal(new RectangleI(360, 258, 440, 52),
+            FloatingBarPlacement.Place(new RectangleI(650, 100, 100, 150),
+                440, 52, bounds));
+        Equal(new RectangleI(360, 440, 440, 52),
+            FloatingBarPlacement.Place(new RectangleI(650, 500, 100, 80),
+                440, 52, bounds));
+    }),
     ("Two saves in one second get distinct names", () =>
     {
         var at = new DateTimeOffset(2026, 9, 23, 14, 30, 25, TimeSpan.Zero);

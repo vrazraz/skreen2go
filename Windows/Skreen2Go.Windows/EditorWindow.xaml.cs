@@ -22,16 +22,20 @@ public partial class EditorWindow : Window
     private PointI? dragStart;
     private PointI? dragEnd;
 
-    public EditorWindow(Bitmap source, AppSettings settings)
+    public EditorWindow(Bitmap source, AppSettings settings,
+        IEnumerable<Annotation>? initialAnnotations = null)
     {
         this.source = source;
         this.settings = settings;
         InitializeComponent();
+        if (initialAnnotations is not null)
+            foreach (var annotation in initialAnnotations) session.Add(annotation);
         ScreenshotImage.Source = ImageOutput.Preview(source);
         ImageSurface.Width = source.Width;
         ImageSurface.Height = source.Height;
         DrawingCanvas.Width = source.Width;
         DrawingCanvas.Height = source.Height;
+        DrawAnnotations();
         var workArea = SystemParameters.WorkArea;
         var scale = Math.Min(1, Math.Min((workArea.Width - 120) / source.Width,
             (workArea.Height - 190) / source.Height));

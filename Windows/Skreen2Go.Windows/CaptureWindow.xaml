@@ -6,17 +6,115 @@
         Focusable="True" Cursor="Cross" Title="Skreen2Go selection"
         KeyDown="OnKeyDown" MouseLeftButtonDown="OnMouseDown"
         MouseMove="OnMouseMove" MouseLeftButtonUp="OnMouseUp">
+    <Window.Resources>
+        <Style x:Key="PanelButton" TargetType="Button">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Background" Value="#FFF2F4F5" />
+            <Setter Property="Foreground" Value="#FF20252B" />
+            <Setter Property="FontFamily" Value="Segoe UI Symbol" />
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                BorderBrush="#22000000" BorderThickness="1" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#88000000" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource PanelButton}">
+            <Setter Property="Width" Value="40" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" Background="{TemplateBinding Background}"
+                                BorderBrush="#22000000" BorderThickness="1" CornerRadius="20">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="BorderBrush" Value="#88000000" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid x:Name="Root" Background="Transparent" ClipToBounds="True">
         <Image x:Name="DimmedImage" Stretch="Fill" IsHitTestVisible="False" />
-        <Border Background="#88000000" IsHitTestVisible="False" />
+        <Border Background="#99000000" IsHitTestVisible="False" />
         <Image x:Name="SelectedImage" Stretch="Fill" IsHitTestVisible="False" />
-        <Canvas IsHitTestVisible="False">
-            <Border x:Name="SelectionBorder" Visibility="Collapsed"
-                    BorderBrush="#FF58D0FF" BorderThickness="2" CornerRadius="2" />
-            <Border Canvas.Left="24" Canvas.Top="24" Background="#DD182029"
-                    CornerRadius="7" Padding="14,9">
-                <TextBlock x:Name="Instruction" Foreground="White" FontSize="14"
+        <Canvas x:Name="AnnotationCanvas" IsHitTestVisible="False" />
+        <Canvas x:Name="SelectionCanvas" IsHitTestVisible="False" />
+        <Canvas x:Name="HudCanvas">
+            <Border x:Name="InstructionPanel" Canvas.Left="24" Canvas.Top="24" Background="#CC182029"
+                    CornerRadius="8" Padding="12,7" IsHitTestVisible="False">
+                <TextBlock x:Name="Instruction" Foreground="White" FontSize="13"
                            Text="{DynamicResource CaptureHint}" />
+            </Border>
+            <Border x:Name="ActionPanel" Visibility="Collapsed" Background="#EDEFF1F3"
+                    CornerRadius="14" Padding="7,6">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="3" Opacity="0.28" />
+                </Border.Effect>
+                <Grid>
+                <StackPanel x:Name="ScreenshotControls" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Style="{StaticResource PanelButton}" Content="×" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
+                    <Separator Margin="5,5" Width="1" Background="#AAB2B8" />
+                    <Button x:Name="ArrowButton" Style="{StaticResource PanelButton}" Content="↗" ToolTip="{DynamicResource Arrow}" Click="OnArrow" />
+                    <Button x:Name="RectangleButton" Style="{StaticResource PanelButton}" Content="□" ToolTip="{DynamicResource Rectangle}" Click="OnRectangle" />
+                    <Button x:Name="TextButton" Style="{StaticResource PanelButton}" Content="Aa" FontFamily="Segoe UI" FontSize="12" ToolTip="{DynamicResource Text}" Click="OnText" />
+                    <Button x:Name="ColorButton" Style="{StaticResource PanelButton}" ToolTip="{DynamicResource ChooseColor}" Click="OnColor" />
+                    <Button Style="{StaticResource PanelButton}" Content="↶" ToolTip="{DynamicResource Undo}" Click="OnUndo" />
+                    <Button Style="{StaticResource PanelButton}" Content="↷" ToolTip="{DynamicResource Redo}" Click="OnRedo" />
+                    <Button Style="{StaticResource PanelButton}" Content="⚙" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
+                    <Separator Margin="9,5" Width="1" Background="#AAB2B8" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="⧉" ToolTip="{DynamicResource Copy}" Click="OnCopy" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="↓" ToolTip="{DynamicResource Save}" Click="OnSave" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="⇩" ToolTip="{DynamicResource SaveAs}" Click="OnSaveAs" />
+                </StackPanel>
+                <StackPanel x:Name="RecordingControls" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
+                    <Button Style="{StaticResource PanelButton}" Content="×" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
+                    <Separator Margin="5,5" Width="1" Background="#AAB2B8" />
+                    <Button Style="{StaticResource PanelButton}" Content="⚙" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
+                    <Button x:Name="SystemAudioButton" Style="{StaticResource PanelButton}" Content="◖))" FontFamily="Segoe UI" FontSize="11" ToolTip="{DynamicResource RecordSystemAudio}" Click="OnSystemAudio" />
+                    <Button x:Name="MicrophoneButton" Style="{StaticResource PanelButton}" Content="🎙" FontSize="15" ToolTip="{DynamicResource RecordMicrophone}" Click="OnMicrophone" />
+                    <Separator Margin="9,5" Width="1" Background="#AAB2B8" />
+                    <Button Style="{StaticResource PrimaryButton}" Background="#FFEF3F49" ToolTip="{DynamicResource Recording}" Click="OnRecord" />
+                </StackPanel>
+                </Grid>
+            </Border>
+            <Border x:Name="ColorPalette" Visibility="Collapsed" Background="#F2F4F5"
+                    CornerRadius="10" Padding="8">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="12" ShadowDepth="3" Opacity="0.25" />
+                </Border.Effect>
+                <WrapPanel x:Name="PaletteItems" Width="140" />
+            </Border>
+            <Border x:Name="SizeBadge" Visibility="Collapsed" Background="#D91B222A"
+                    CornerRadius="5" Padding="5,2" IsHitTestVisible="False">
+                <TextBlock x:Name="SizeText" Foreground="White" FontSize="12"
+                           FontFamily="Consolas" />
             </Border>
         </Canvas>
     </Grid>
