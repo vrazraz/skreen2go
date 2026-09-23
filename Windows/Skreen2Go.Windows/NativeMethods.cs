@@ -8,6 +8,7 @@ internal static partial class NativeMethods
     internal const uint ModControl = 0x0002;
     internal const uint ModShift = 0x0004;
     internal const uint VkS = 0x53;
+    internal const uint VkR = 0x52;
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -18,10 +18,11 @@ public partial class CaptureWindow : Window
 
     public event Action<RectangleI>? CaptureAccepted;
 
-    internal CaptureWindow(DesktopCapture capture)
+    internal CaptureWindow(DesktopCapture capture, bool recording = false)
     {
         this.capture = capture;
         InitializeComponent();
+        if (recording) Instruction.Text = "Drag to select a recording area · Esc to cancel";
         var source = BitmapSourceFromBitmap(capture.Bitmap);
         DimmedImage.Source = source;
         SelectedImage.Source = source;

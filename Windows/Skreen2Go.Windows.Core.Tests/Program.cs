@@ -91,7 +91,53 @@ var tests = new (string Name, Action Run)[]
         }
         finally { Directory.Delete(folder, recursive: true); }
     }),
+    ("Recording selection uses the display with greatest overlap and even pixels", () =>
+    {
+        var displays = new[]
+        {
+            new RecordingDisplay("left", new RectangleI(0, 0, 1920, 1080)),
+            new RecordingDisplay("right", new RectangleI(1920, 0, 2560, 1440))
+        };
+        var plan = RecordingGeometry.Plan(new RectangleI(1800, 100, 341, 205), displays);
+        Equal("right", plan.DisplayName);
+        Equal(new RectangleI(0, 100, 220, 204), plan.SourceRect);
+        Equal(true, plan.TrimmedToOneDisplay);
+    }),
+    ("Recording rejects a selection smaller than two pixels", () =>
+    {
+        try
+        {
+            RecordingGeometry.Plan(new RectangleI(10, 10, 1, 50),
+                [new RecordingDisplay("main", new RectangleI(0, 0, 100, 100))]);
+            throw new Exception("Expected ArgumentException");
+        }
+        catch (ArgumentException) { }
+    }),
 };
+
+if (Environment.GetEnvironmentVariable("SKREEN2GO_TEST_RECORDING") == "1")
+{
+    tests = [.. tests, ("A stopped recording finalizes an MP4 file", () =>
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Skreen2GoRecordingTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "sample.mp4");
+            var display = System.Windows.Forms.Screen.PrimaryScreen!;
+            using var recorder = new ScreenRecordingService();
+            recorder.Start(new RecordingPlan(display.DeviceName,
+                new RectangleI(0, 0, 320, 240), false), path,
+                captureSystemAudio: false, captureMicrophone: false);
+            Thread.Sleep(2500);
+            Equal(path, recorder.StopAsync().GetAwaiter().GetResult());
+            if (new FileInfo(path).Length < 1024)
+                throw new Exception("Expected a nonempty MP4 file");
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    })];
+}
 
 var failed = 0;
 foreach (var (name, run) in tests)
