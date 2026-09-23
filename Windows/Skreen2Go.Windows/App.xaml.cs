@@ -65,7 +65,11 @@ public partial class App : System.Windows.Application
         exitMenuItem = new Forms.ToolStripMenuItem("", null,
             (_, _) => Dispatcher.Invoke(ExitAsync));
         tray.ContextMenuStrip.Items.Add(exitMenuItem);
-        tray.DoubleClick += (_, _) => Dispatcher.Invoke(BeginCapture);
+        tray.MouseClick += (_, args) =>
+        {
+            if (args.Button == Forms.MouseButtons.Left)
+                Dispatcher.BeginInvoke(BeginCapture, DispatcherPriority.Normal);
+        };
         RefreshTrayText();
 
         var parameters = new HwndSourceParameters("Skreen2Go hotkey")

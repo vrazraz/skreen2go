@@ -11,6 +11,7 @@ using Skreen2Go.Windows.Core;
 using Bitmap = System.Drawing.Bitmap;
 using Brushes = System.Windows.Media.Brushes;
 using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
 using Cursors = System.Windows.Input.Cursors;
 using FontFamily = System.Windows.Media.FontFamily;
 using MessageBox = System.Windows.MessageBox;
@@ -47,6 +48,7 @@ public partial class CaptureWindow : Window
     private Gesture gesture;
     private AnnotationKind? tool;
     private Annotation? draft;
+    private TextBox? textEntry;
 
     public event Action<RectangleI, IReadOnlyList<Annotation>>? CaptureAccepted;
     public event Action<RectangleI, bool, bool>? RecordingAccepted;
@@ -72,7 +74,7 @@ public partial class CaptureWindow : Window
         SelectedImage.Source = source;
         BuildPalette();
         UpdateButtonStates();
-        Loaded += (_, _) => { Activate(); Focus(); };
+        Loaded += (_, _) => { Activate(); Focus(); MoveHintNear(CursorPoint()); };
         SourceInitialized += (_, _) =>
         {
             var handle = new WindowInteropHelper(this).Handle;
@@ -177,6 +179,7 @@ public partial class CaptureWindow : Window
 
     private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        if (selection is null) MoveHintNear(CursorPoint());
         if (gesture == Gesture.None)
         {
             UpdateCursor(CursorPoint());
@@ -265,6 +268,7 @@ public partial class CaptureWindow : Window
             AnnotationCanvas.Clip = Geometry.Empty;
             SizeBadge.Visibility = Visibility.Collapsed;
             InstructionPanel.Visibility = Visibility.Visible;
+            MoveHintNear(CursorPoint());
             return;
         }
         var box = OnOverlay(frame);
@@ -312,6 +316,21 @@ public partial class CaptureWindow : Window
             DrawAnnotation(annotation, frame);
         if (draft is not null && AnnotationGeometry.IsMeaningful(draft))
             DrawAnnotation(draft, frame);
+    }
+
+    private void MoveHintNear(PointI cursor)
+    {
+        if (InstructionPanel.Visibility != Visibility.Visible) return;
+        InstructionPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var point = OnOverlay(cursor);
+        var width = InstructionPanel.DesiredSize.Width;
+        var height = InstructionPanel.DesiredSize.Height;
+        var x = point.X + 18;
+        var y = point.Y + 20;
+        if (x + width > Root.ActualWidth) x = point.X - width - 18;
+        if (y + height > Root.ActualHeight) y = point.Y - height - 18;
+        Canvas.SetLeft(InstructionPanel, Math.Clamp(x, 0, Math.Max(0, Root.ActualWidth - width)));
+        Canvas.SetTop(InstructionPanel, Math.Clamp(y, 0, Math.Max(0, Root.ActualHeight - height)));
     }
 
     private static System.Windows.Media.Color ColorFromArgb(uint argb) =>
@@ -448,12 +467,23 @@ public partial class CaptureWindow : Window
 
     private void AddText(PointI point)
     {
-        var prompt = new TextPrompt { Owner = this };
-        if (prompt.ShowDialog() != true) return;
-        annotations.Add(new Annotation(AnnotationKind.Text, default, default,
-            new RectangleI(point.X, point.Y, 0, 0), prompt.Value,
-            currentColor, settings.AnnotationThickness, 1, settings.TextSize));
-        DrawSelection();
+        if (selection is not { } frame || textEntry is not null) return;
+        HidePanel();
+        var origin = OnOverlay(new PointI(frame.X + point.X, frame.Y + point.Y));
+        var scale = OnOverlay(new PointI(frame.X + point.X,
+            frame.Y + point.Y + (int)Math.Ceiling(settings.TextSize)));
+        var fontSize = Math.Max(8, scale.Y - origin.Y);
+        textEntry = InlineTextEntry.Show(HudCanvas, origin, fontSize,
+            new SolidColorBrush(ColorFromArgb(currentColor)),
+            Math.Min(340, Root.ActualWidth - origin.X - 8),
+            value =>
+            {
+                annotations.Add(new Annotation(AnnotationKind.Text, default, default,
+                    new RectangleI(point.X, point.Y, 0, 0), value,
+                    currentColor, settings.AnnotationThickness, 1, settings.TextSize));
+                DrawSelection();
+            },
+            () => { textEntry = null; ShowPanel(); });
     }
 
     private void SetTool(AnnotationKind kind)
@@ -523,12 +553,14 @@ public partial class CaptureWindow : Window
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        if (selection is null) return;
+        if (selection is not { } frame) return;
         try
         {
             using var image = RenderSelection();
             ImageOutput.Copy(image);
+            var preview = ImageOutput.Preview(image);
             Close();
+            Dispatcher.BeginInvoke(() => CaptureFeedback.Play(preview, frame));
         }
         catch (Exception error) { ShowError("ErrorCopy", error); }
     }
@@ -578,6 +610,7 @@ public partial class CaptureWindow : Window
 
     private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (textEntry is not null) return;
         if (e.Key == Key.Escape) Close();
         else if (e.Key == Key.Return)
         { if (recordingMode) OnRecord(this, new RoutedEventArgs()); else OpenEditor(); }

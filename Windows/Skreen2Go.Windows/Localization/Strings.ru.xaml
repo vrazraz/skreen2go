@@ -19,8 +19,6 @@
     <sys:String x:Key="Cancel">Отмена</sys:String>
     <sys:String x:Key="EditorDrawHint">Потяните, чтобы нарисовать · Ctrl+C — копировать · Ctrl+S — сохранить</sys:String>
     <sys:String x:Key="EditorSelectHint">Перетащите объект · Delete — удалить · Ctrl+Z — отменить</sys:String>
-    <sys:String x:Key="TextPromptTitle">Добавить текст</sys:String>
-    <sys:String x:Key="TextPromptLabel">Текст на снимке</sys:String>
     <sys:String x:Key="Add">Добавить</sys:String>
     <sys:String x:Key="SettingsTitle">Skreen2Go — настройки</sys:String>
     <sys:String x:Key="SettingsHeading">Настройки</sys:String>

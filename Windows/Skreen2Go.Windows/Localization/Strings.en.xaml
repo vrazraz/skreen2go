@@ -19,8 +19,6 @@
     <sys:String x:Key="Cancel">Cancel</sys:String>
     <sys:String x:Key="EditorDrawHint">Drag to draw · Ctrl+C to copy · Ctrl+S to save</sys:String>
     <sys:String x:Key="EditorSelectHint">Drag to move · Delete to remove · Ctrl+Z to undo</sys:String>
-    <sys:String x:Key="TextPromptTitle">Add text</sys:String>
-    <sys:String x:Key="TextPromptLabel">Text on screenshot</sys:String>
     <sys:String x:Key="Add">Add</sys:String>
     <sys:String x:Key="SettingsTitle">Skreen2Go — Settings</sys:String>
     <sys:String x:Key="SettingsHeading">Settings</sys:String>

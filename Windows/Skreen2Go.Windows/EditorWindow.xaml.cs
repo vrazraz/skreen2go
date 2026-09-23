@@ -9,6 +9,7 @@ using Skreen2Go.Windows.Core;
 using MessageBox = System.Windows.MessageBox;
 using WpfPoint = System.Windows.Point;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
+using TextBox = System.Windows.Controls.TextBox;
 
 namespace Skreen2Go.Windows;
 
@@ -21,6 +22,7 @@ public partial class EditorWindow : Window
     private int? selectedIndex;
     private PointI? dragStart;
     private PointI? dragEnd;
+    private TextBox? textEntry;
 
     public EditorWindow(Bitmap source, AppSettings settings,
         IEnumerable<Annotation>? initialAnnotations = null)
@@ -62,15 +64,24 @@ public partial class EditorWindow : Window
         }
         if (tool == AnnotationKind.Text)
         {
-            var prompt = new TextPrompt { Owner = this };
-            if (prompt.ShowDialog() == true)
-            {
-                session.Add(new Annotation(AnnotationKind.Text, default, default,
-                    new RectangleI(point.X, point.Y, 0, 0), prompt.Value,
-                    settings.AnnotationColor, settings.AnnotationThickness, 1,
-                    settings.TextSize));
-                DrawAnnotations();
-            }
+            if (textEntry is not null) return;
+            textEntry = InlineTextEntry.Show(DrawingCanvas,
+                new WpfPoint(point.X, point.Y), settings.TextSize,
+                new SolidColorBrush(System.Windows.Media.Color.FromArgb(
+                    (byte)(settings.AnnotationColor >> 24),
+                    (byte)(settings.AnnotationColor >> 16),
+                    (byte)(settings.AnnotationColor >> 8),
+                    (byte)settings.AnnotationColor)),
+                Math.Min(340, source.Width - point.X - 8),
+                value =>
+                {
+                    session.Add(new Annotation(AnnotationKind.Text, default, default,
+                        new RectangleI(point.X, point.Y, 0, 0), value,
+                        settings.AnnotationColor, settings.AnnotationThickness, 1,
+                        settings.TextSize));
+                    DrawAnnotations();
+                },
+                () => textEntry = null);
             return;
         }
         if (tool == AnnotationKind.Cursor)
@@ -279,7 +290,15 @@ public partial class EditorWindow : Window
         {
             using var rendered = ImageOutput.Render(source, session.Annotations);
             ImageOutput.Copy(rendered);
+            var preview = ImageOutput.Preview(rendered);
+            var topLeft = ImageSurface.PointToScreen(new WpfPoint(0, 0));
+            var bottomRight = ImageSurface.PointToScreen(
+                new WpfPoint(ImageSurface.ActualWidth, ImageSurface.ActualHeight));
+            var area = new RectangleI((int)topLeft.X, (int)topLeft.Y,
+                Math.Max(1, (int)(bottomRight.X - topLeft.X)),
+                Math.Max(1, (int)(bottomRight.Y - topLeft.Y)));
             Close();
+            Dispatcher.BeginInvoke(() => CaptureFeedback.Play(preview, area));
         }
         catch (Exception error) { ShowError("ErrorCopy", error); }
     }
@@ -324,6 +343,7 @@ public partial class EditorWindow : Window
 
     private void OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (textEntry is not null) return;
         if (e.Key == Key.Escape) Close();
         else if (selectedIndex is not null && e.Key is Key.Delete or Key.Back)
         {

@@ -21,9 +21,18 @@
         <Style TargetType="ComboBox">
             <Setter Property="MinWidth" Value="160" />
             <Setter Property="Margin" Value="0,5,0,12" />
+            <Setter Property="Background" Value="#303947" />
+            <Setter Property="Foreground" Value="#F5F7FA" />
+            <Setter Property="BorderBrush" Value="#465264" />
+            <Setter Property="TextElement.Foreground" Value="#F5F7FA" />
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#303947" />
+            <Setter Property="Foreground" Value="#F5F7FA" />
         </Style>
         <Style TargetType="CheckBox">
             <Setter Property="Margin" Value="0,7,0,7" />
+            <Setter Property="Foreground" Value="#F5F7FA" />
         </Style>
     </Window.Resources>
     <Grid Margin="22">

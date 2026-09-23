@@ -9,6 +9,10 @@ internal static partial class NativeMethods
     internal const uint ModShift = 0x0004;
     internal const uint VkS = 0x53;
     internal const uint VkR = 0x52;
+    internal const int GwlExStyle = -20;
+    internal const long WsExTransparent = 0x00000020;
+    internal const long WsExToolWindow = 0x00000080;
+    internal const long WsExNoActivate = 0x08000000;
 
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -56,6 +60,19 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetWindowRect(IntPtr window, out NativeRect rect);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial IntPtr FindWindow(string className, string? windowName);
+
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowExW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial IntPtr FindWindowEx(IntPtr parent, IntPtr after,
+        string className, string? windowName);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    internal static partial IntPtr GetWindowLongPtr(IntPtr window, int index);
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    internal static partial IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr value);
 
     [LibraryImport("user32.dll")]
     internal static partial int GetWindowTextLengthW(IntPtr window);

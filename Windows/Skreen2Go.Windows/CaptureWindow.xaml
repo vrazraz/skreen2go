@@ -13,9 +13,9 @@
             <Setter Property="Margin" Value="2,0" />
             <Setter Property="Background" Value="#FFF2F4F5" />
             <Setter Property="Foreground" Value="#FF20252B" />
-            <Setter Property="FontFamily" Value="Segoe UI Symbol" />
-            <Setter Property="FontSize" Value="17" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Normal" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -79,26 +79,30 @@
                 </Border.Effect>
                 <Grid>
                 <StackPanel x:Name="ScreenshotControls" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Style="{StaticResource PanelButton}" Content="×" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE711;" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
                     <Separator Margin="5,5" Width="1" Background="#AAB2B8" />
-                    <Button x:Name="ArrowButton" Style="{StaticResource PanelButton}" Content="↗" ToolTip="{DynamicResource Arrow}" Click="OnArrow" />
-                    <Button x:Name="RectangleButton" Style="{StaticResource PanelButton}" Content="□" ToolTip="{DynamicResource Rectangle}" Click="OnRectangle" />
-                    <Button x:Name="TextButton" Style="{StaticResource PanelButton}" Content="Aa" FontFamily="Segoe UI" FontSize="12" ToolTip="{DynamicResource Text}" Click="OnText" />
+                    <Button x:Name="ArrowButton" Style="{StaticResource PanelButton}" ToolTip="{DynamicResource Arrow}" Click="OnArrow">
+                        <Path Data="M3,17 L17,3 M9,3 L17,3 L17,11" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" Width="20" Height="20" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="RectangleButton" Style="{StaticResource PanelButton}" ToolTip="{DynamicResource Rectangle}" Click="OnRectangle">
+                        <Path Data="M3,3 L17,3 L17,17 L3,17 Z" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2" StrokeLineJoin="Round" Width="18" Height="18" Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="TextButton" Style="{StaticResource PanelButton}" Content="&#xE8D2;" ToolTip="{DynamicResource Text}" Click="OnText" />
                     <Button x:Name="ColorButton" Style="{StaticResource PanelButton}" ToolTip="{DynamicResource ChooseColor}" Click="OnColor" />
-                    <Button Style="{StaticResource PanelButton}" Content="↶" ToolTip="{DynamicResource Undo}" Click="OnUndo" />
-                    <Button Style="{StaticResource PanelButton}" Content="↷" ToolTip="{DynamicResource Redo}" Click="OnRedo" />
-                    <Button Style="{StaticResource PanelButton}" Content="⚙" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE7A7;" ToolTip="{DynamicResource Undo}" Click="OnUndo" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE7A6;" ToolTip="{DynamicResource Redo}" Click="OnRedo" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE713;" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
                     <Separator Margin="9,5" Width="1" Background="#AAB2B8" />
-                    <Button Style="{StaticResource PrimaryButton}" Content="⧉" ToolTip="{DynamicResource Copy}" Click="OnCopy" />
-                    <Button Style="{StaticResource PrimaryButton}" Content="↓" ToolTip="{DynamicResource Save}" Click="OnSave" />
-                    <Button Style="{StaticResource PrimaryButton}" Content="⇩" ToolTip="{DynamicResource SaveAs}" Click="OnSaveAs" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="&#xE8C8;" ToolTip="{DynamicResource Copy}" Click="OnCopy" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="&#xE74E;" ToolTip="{DynamicResource Save}" Click="OnSave" />
+                    <Button Style="{StaticResource PrimaryButton}" Content="&#xE792;" ToolTip="{DynamicResource SaveAs}" Click="OnSaveAs" />
                 </StackPanel>
                 <StackPanel x:Name="RecordingControls" Orientation="Horizontal" VerticalAlignment="Center" Visibility="Collapsed">
-                    <Button Style="{StaticResource PanelButton}" Content="×" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE711;" ToolTip="{DynamicResource Cancel}" Click="OnCancel" />
                     <Separator Margin="5,5" Width="1" Background="#AAB2B8" />
-                    <Button Style="{StaticResource PanelButton}" Content="⚙" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
-                    <Button x:Name="SystemAudioButton" Style="{StaticResource PanelButton}" Content="◖))" FontFamily="Segoe UI" FontSize="11" ToolTip="{DynamicResource RecordSystemAudio}" Click="OnSystemAudio" />
-                    <Button x:Name="MicrophoneButton" Style="{StaticResource PanelButton}" Content="🎙" FontSize="15" ToolTip="{DynamicResource RecordMicrophone}" Click="OnMicrophone" />
+                    <Button Style="{StaticResource PanelButton}" Content="&#xE713;" ToolTip="{DynamicResource TraySettings}" Click="OnSettings" />
+                    <Button x:Name="SystemAudioButton" Style="{StaticResource PanelButton}" Content="&#xE767;" ToolTip="{DynamicResource RecordSystemAudio}" Click="OnSystemAudio" />
+                    <Button x:Name="MicrophoneButton" Style="{StaticResource PanelButton}" Content="&#xE720;" ToolTip="{DynamicResource RecordMicrophone}" Click="OnMicrophone" />
                     <Separator Margin="9,5" Width="1" Background="#AAB2B8" />
                     <Button Style="{StaticResource PrimaryButton}" Background="#FFEF3F49" ToolTip="{DynamicResource Recording}" Click="OnRecord" />
                 </StackPanel>
