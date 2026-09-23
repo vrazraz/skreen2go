@@ -1,0 +1,23 @@
+<Window x:Class="Skreen2Go.Windows.CaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
+        Background="Transparent" ShowInTaskbar="False" Topmost="True"
+        Focusable="True" Cursor="Cross" Title="Skreen2Go selection"
+        KeyDown="OnKeyDown" MouseLeftButtonDown="OnMouseDown"
+        MouseMove="OnMouseMove" MouseLeftButtonUp="OnMouseUp">
+    <Grid x:Name="Root" Background="Transparent" ClipToBounds="True">
+        <Image x:Name="DimmedImage" Stretch="Fill" IsHitTestVisible="False" />
+        <Border Background="#88000000" IsHitTestVisible="False" />
+        <Image x:Name="SelectedImage" Stretch="Fill" IsHitTestVisible="False" />
+        <Canvas IsHitTestVisible="False">
+            <Border x:Name="SelectionBorder" Visibility="Collapsed"
+                    BorderBrush="#FF58D0FF" BorderThickness="2" CornerRadius="2" />
+            <Border Canvas.Left="24" Canvas.Top="24" Background="#DD182029"
+                    CornerRadius="7" Padding="14,9">
+                <TextBlock Foreground="White" FontSize="14"
+                           Text="Drag to capture a region · Esc to cancel" />
+            </Border>
+        </Canvas>
+    </Grid>
+</Window>

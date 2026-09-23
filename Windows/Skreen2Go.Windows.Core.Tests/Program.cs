@@ -1,4 +1,6 @@
 using Skreen2Go.Windows.Core;
+using Skreen2Go.Windows;
+using System.Drawing;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -56,6 +58,38 @@ var tests = new (string Name, Action Run)[]
         session.Redo();
         Equal(AnnotationKind.Rectangle, session.Annotations[0].Kind);
         Equal(1, session.Annotations.Count);
+    }),
+    ("Rendered annotation keeps source dimensions and colored pixels", () =>
+    {
+        using var source = new Bitmap(200, 100);
+        using (var graphics = Graphics.FromImage(source)) graphics.Clear(Color.White);
+        var arrow = new Annotation(AnnotationKind.Arrow,
+            new PointI(10, 10), new PointI(50, 10), default, "", 0xFFFF0000, 3, 1);
+        using var result = ImageOutput.Render(source, [arrow]);
+        Equal(200, result.Width);
+        Equal(100, result.Height);
+        var pixel = result.GetPixel(25, 10);
+        if (pixel.R < 200 || pixel.G > 80 || pixel.B > 80)
+            throw new Exception($"Expected red arrow pixel at (25,10), got {pixel}");
+    }),
+    ("Save as replaces a confirmed existing image", () =>
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "Skreen2GoTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "image.png");
+            using var oldImage = new Bitmap(1, 1);
+            oldImage.SetPixel(0, 0, Color.Blue);
+            oldImage.Save(path);
+            using var newImage = new Bitmap(2, 2);
+            using (var graphics = Graphics.FromImage(newImage)) graphics.Clear(Color.Red);
+            ImageOutput.Save(newImage, path, overwrite: true);
+            using var saved = new Bitmap(path);
+            Equal(2, saved.Width);
+            Equal(Color.Red.ToArgb(), saved.GetPixel(0, 0).ToArgb());
+        }
+        finally { Directory.Delete(folder, recursive: true); }
     }),
 };
 

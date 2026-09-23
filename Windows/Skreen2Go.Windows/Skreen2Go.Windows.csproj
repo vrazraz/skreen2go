@@ -1,13 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../Skreen2Go.Windows.Core/Skreen2Go.Windows.Core.csproj" />
-    <ProjectReference Include="../Skreen2Go.Windows/Skreen2Go.Windows.csproj" />
   </ItemGroup>
 </Project>
