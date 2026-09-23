@@ -21,6 +21,42 @@ var tests = new (string Name, Action Run)[]
         Equal("Screenshot 2026-09-23 at 14.30.25.png", Path.GetFileName(first));
         Equal("Screenshot 2026-09-23 at 14.30.25 (2).png", Path.GetFileName(second));
     }),
+    ("A click with the arrow tool creates no annotation", () =>
+    {
+        var session = new AnnotationSession();
+        Equal(false, session.Add(new Annotation(AnnotationKind.Arrow,
+            new PointI(10, 10), new PointI(10, 10), default, "", 0xFFFF0000, 3, 1)));
+        Equal(0, session.Annotations.Count);
+    }),
+    ("A one-pixel rectangle creates no annotation", () =>
+    {
+        var session = new AnnotationSession();
+        Equal(false, session.Add(new Annotation(AnnotationKind.Rectangle,
+            default, default, new RectangleI(10, 10, 1, 1), "", 0xFFFF0000, 3, 1)));
+    }),
+    ("Undo and redo restore a drawn arrow", () =>
+    {
+        var session = new AnnotationSession();
+        session.Add(new Annotation(AnnotationKind.Arrow,
+            new PointI(10, 10), new PointI(40, 50), default, "", 0xFFFF0000, 3, 1));
+        Equal(1, session.Annotations.Count);
+        session.Undo();
+        Equal(0, session.Annotations.Count);
+        session.Redo();
+        Equal(1, session.Annotations.Count);
+    }),
+    ("A new edit invalidates redo", () =>
+    {
+        var session = new AnnotationSession();
+        session.Add(new Annotation(AnnotationKind.Arrow,
+            new PointI(10, 10), new PointI(40, 50), default, "", 0xFFFF0000, 3, 1));
+        session.Undo();
+        session.Add(new Annotation(AnnotationKind.Rectangle,
+            default, default, new RectangleI(1, 1, 20, 20), "", 0xFF00FF00, 3, 1));
+        session.Redo();
+        Equal(AnnotationKind.Rectangle, session.Annotations[0].Kind);
+        Equal(1, session.Annotations.Count);
+    }),
 };
 
 var failed = 0;
