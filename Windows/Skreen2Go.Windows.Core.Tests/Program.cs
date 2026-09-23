@@ -164,6 +164,70 @@ var tests = new (string Name, Action Run)[]
         }
         finally { File.Delete(file); }
     }),
+    ("A click chooses the first matching window in Z order", () =>
+    {
+        var windows = new[]
+        {
+            new RectangleI(50, 50, 100, 100),
+            new RectangleI(0, 0, 200, 200)
+        };
+        Equal(windows[0], WindowSelection.Pick(new PointI(75, 75), windows));
+        Equal(windows[1], WindowSelection.Pick(new PointI(10, 10), windows));
+        Equal((RectangleI?)null, WindowSelection.Pick(new PointI(250, 250), windows));
+    }),
+    ("Blur softens pixels inside its rectangle without changing outside pixels", () =>
+    {
+        using var source = new Bitmap(21, 21);
+        for (var y = 0; y < 21; y++)
+        for (var x = 0; x < 21; x++)
+            source.SetPixel(x, y, (x + y) % 2 == 0 ? Color.White : Color.Black);
+        var blur = new Annotation(AnnotationKind.Blur, default, default,
+            new RectangleI(5, 5, 11, 11), "", 0, 1, 1, 24, 3);
+        using var result = ImageOutput.Render(source, [blur]);
+        var center = result.GetPixel(10, 10);
+        if (center.R is <= 20 or >= 235)
+            throw new Exception($"Expected softened center pixel, got {center}");
+        Equal(source.GetPixel(0, 0).ToArgb(), result.GetPixel(0, 0).ToArgb());
+    }),
+    ("Cursor marker is visible in the exported image", () =>
+    {
+        using var source = new Bitmap(40, 40);
+        using (var graphics = Graphics.FromImage(source)) graphics.Clear(Color.White);
+        var marker = new Annotation(AnnotationKind.Cursor, default, default,
+            new RectangleI(10, 10, 20, 20), "", 0xFFFF0000, 3, 1);
+        using var result = ImageOutput.Render(source, [marker]);
+        var changed = false;
+        for (var y = 10; y < 30; y++)
+        for (var x = 10; x < 30; x++)
+            changed |= result.GetPixel(x, y).ToArgb() != Color.White.ToArgb();
+        Equal(true, changed);
+        Equal(Color.White.ToArgb(), result.GetPixel(0, 0).ToArgb());
+    }),
+    ("Moving an annotation stays inside the image and can be undone", () =>
+    {
+        var session = new AnnotationSession();
+        var shape = new Annotation(AnnotationKind.Rectangle, default, default,
+            new RectangleI(50, 30, 20, 20), "", 0xFFFF0000, 3, 1);
+        session.Add(shape);
+        session.ReplaceAt(0, AnnotationGeometry.Move(shape, 100, 100,
+            new RectangleI(0, 0, 100, 80)));
+        Equal(new RectangleI(80, 60, 20, 20), session.Annotations[0].Rect);
+        session.Undo();
+        Equal(shape, session.Annotations[0]);
+    }),
+    ("Selection chooses the topmost annotation and deletion can be undone", () =>
+    {
+        var session = new AnnotationSession();
+        session.Add(new Annotation(AnnotationKind.Rectangle, default, default,
+            new RectangleI(0, 0, 40, 40), "", 0xFFFF0000, 3, 1));
+        session.Add(new Annotation(AnnotationKind.Blur, default, default,
+            new RectangleI(10, 10, 40, 40), "", 0, 1, 1));
+        Equal(1, session.HitTest(new PointI(20, 20)));
+        session.RemoveAt(1);
+        Equal(1, session.Annotations.Count);
+        session.Undo();
+        Equal(2, session.Annotations.Count);
+    }),
 };
 
 if (Environment.GetEnvironmentVariable("SKREEN2GO_TEST_RECORDING") == "1")

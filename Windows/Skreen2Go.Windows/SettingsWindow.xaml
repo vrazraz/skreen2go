@@ -1,7 +1,7 @@
 <Window x:Class="Skreen2Go.Windows.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Skreen2Go — Settings" Width="610" Height="690"
+        Title="{DynamicResource SettingsTitle}" Width="610" Height="690"
         MinWidth="540" WindowStartupLocation="CenterScreen"
         Background="#171B22" Foreground="#F5F7FA">
     <Window.Resources>
@@ -33,41 +33,41 @@
         </Grid.RowDefinitions>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="0,0,10,0">
-                <TextBlock Text="Settings" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
-                <TextBlock Text="Save folder" />
+                <TextBlock Text="{DynamicResource SettingsHeading}" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+                <TextBlock Text="{DynamicResource SaveFolder}" />
                 <DockPanel Margin="0,5,0,12">
-                    <Button Content="Browse…" DockPanel.Dock="Right" Click="OnBrowse" />
+                    <Button Content="{DynamicResource Browse}" DockPanel.Dock="Right" Click="OnBrowse" />
                     <TextBox x:Name="FolderBox" VerticalContentAlignment="Center" />
                 </DockPanel>
-                <TextBlock Text="Screenshot format" />
+                <TextBlock Text="{DynamicResource ScreenshotFormat}" />
                 <ComboBox x:Name="FormatBox" HorizontalAlignment="Left" />
-                <TextBlock Text="Interface language" />
+                <TextBlock Text="{DynamicResource InterfaceLanguage}" />
                 <ComboBox x:Name="LanguageBox" HorizontalAlignment="Left" />
                 <Separator Margin="0,5,0,12" Background="#465264" />
-                <TextBlock Text="Screenshot hotkey" />
+                <TextBlock Text="{DynamicResource ScreenshotHotkey}" />
                 <TextBox x:Name="CaptureHotkeyBox" IsReadOnly="True"
                          PreviewKeyDown="OnCaptureHotkey" Margin="0,5,0,12" />
-                <TextBlock Text="Recording hotkey" />
+                <TextBlock Text="{DynamicResource RecordingHotkey}" />
                 <TextBox x:Name="RecordingHotkeyBox" IsReadOnly="True"
                          PreviewKeyDown="OnRecordingHotkey" Margin="0,5,0,12" />
-                <CheckBox x:Name="StartWithWindowsBox" Content="Start with Windows" />
+                <CheckBox x:Name="StartWithWindowsBox" Content="{DynamicResource StartWithWindows}" />
                 <Separator Margin="0,12,0,12" Background="#465264" />
-                <TextBlock Text="Recording" FontSize="17" FontWeight="SemiBold" />
-                <CheckBox x:Name="SystemAudioBox" Content="Record system audio" />
-                <CheckBox x:Name="MicrophoneBox" Content="Record microphone" />
-                <CheckBox x:Name="CursorBox" Content="Show cursor" />
-                <CheckBox x:Name="ClicksBox" Content="Highlight clicks" />
+                <TextBlock Text="{DynamicResource Recording}" FontSize="17" FontWeight="SemiBold" />
+                <CheckBox x:Name="SystemAudioBox" Content="{DynamicResource RecordSystemAudio}" />
+                <CheckBox x:Name="MicrophoneBox" Content="{DynamicResource RecordMicrophone}" />
+                <CheckBox x:Name="CursorBox" Content="{DynamicResource ShowCursor}" />
+                <CheckBox x:Name="ClicksBox" Content="{DynamicResource HighlightClicks}" />
                 <Separator Margin="0,12,0,12" Background="#465264" />
-                <TextBlock Text="Annotations" FontSize="17" FontWeight="SemiBold" />
-                <Button x:Name="ColorButton" Content="Choose annotation color…"
+                <TextBlock Text="{DynamicResource Annotations}" FontSize="17" FontWeight="SemiBold" />
+                <Button x:Name="ColorButton" Content="{DynamicResource ChooseColor}"
                         HorizontalAlignment="Left" Click="OnColor" />
-                <TextBlock Text="Line width" Margin="0,8,0,0" />
+                <TextBlock Text="{DynamicResource LineWidth}" Margin="0,8,0,0" />
                 <Slider x:Name="ThicknessSlider" Minimum="1" Maximum="20"
                         TickFrequency="1" IsSnapToTickEnabled="True" />
-                <TextBlock Text="Text size" Margin="0,8,0,0" />
+                <TextBlock Text="{DynamicResource TextSize}" Margin="0,8,0,0" />
                 <Slider x:Name="TextSizeSlider" Minimum="8" Maximum="96"
                         TickFrequency="1" IsSnapToTickEnabled="True" />
-                <TextBlock Text="Blur radius" Margin="0,8,0,0" />
+                <TextBlock Text="{DynamicResource BlurRadius}" Margin="0,8,0,0" />
                 <Slider x:Name="BlurSlider" Minimum="1" Maximum="40"
                         TickFrequency="1" IsSnapToTickEnabled="True" />
             </StackPanel>
@@ -76,9 +76,9 @@
             <TextBlock x:Name="ErrorText" Foreground="#FFFF8A8A"
                        VerticalAlignment="Center" DockPanel.Dock="Left" />
             <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                <Button Content="Reset" Click="OnReset" />
-                <Button Content="Cancel" Click="OnCancel" />
-                <Button Content="Save" IsDefault="True" Click="OnSave" />
+                <Button Content="{DynamicResource Reset}" Click="OnReset" />
+                <Button Content="{DynamicResource Cancel}" Click="OnCancel" />
+                <Button Content="{DynamicResource Save}" IsDefault="True" Click="OnSave" />
             </StackPanel>
         </DockPanel>
     </Grid>

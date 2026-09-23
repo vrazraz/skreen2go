@@ -22,7 +22,9 @@ public partial class CaptureWindow : Window
     {
         this.capture = capture;
         InitializeComponent();
-        if (recording) Instruction.Text = "Drag to select a recording area · Esc to cancel";
+        if (recording)
+            Instruction.SetResourceReference(System.Windows.Controls.TextBlock.TextProperty,
+                "RecordingHint");
         var source = BitmapSourceFromBitmap(capture.Bitmap);
         DimmedImage.Source = source;
         SelectedImage.Source = source;
@@ -70,11 +72,13 @@ public partial class CaptureWindow : Window
         ReleaseMouseCapture();
         var selection = SelectionGeometry.Clamp(SelectionGeometry.Normalize(start.Value, end.Value),
             capture.Bounds);
+        var clickPoint = start.Value;
         start = null;
         if (selection.Width < 2 || selection.Height < 2)
         {
-            DrawSelection();
-            return;
+            var window = capture.WindowAt(clickPoint);
+            if (window is null) { DrawSelection(); return; }
+            selection = window.Value;
         }
         CaptureAccepted?.Invoke(selection);
         Close();

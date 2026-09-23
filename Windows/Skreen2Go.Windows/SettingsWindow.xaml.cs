@@ -22,7 +22,17 @@ public partial class SettingsWindow : Window
         color = current.AnnotationColor;
         InitializeComponent();
         FormatBox.ItemsSource = Enum.GetValues<ScreenshotFormat>();
-        LanguageBox.ItemsSource = Enum.GetValues<InterfaceLanguage>();
+        LanguageBox.DisplayMemberPath = "Value";
+        LanguageBox.SelectedValuePath = "Key";
+        LanguageBox.ItemsSource = new[]
+        {
+            new KeyValuePair<InterfaceLanguage, string>(InterfaceLanguage.System,
+                Localizer.Get("LanguageSystem")),
+            new KeyValuePair<InterfaceLanguage, string>(InterfaceLanguage.English,
+                Localizer.Get("LanguageEnglish")),
+            new KeyValuePair<InterfaceLanguage, string>(InterfaceLanguage.Russian,
+                Localizer.Get("LanguageRussian"))
+        };
         Populate(current);
     }
 
@@ -30,7 +40,7 @@ public partial class SettingsWindow : Window
     {
         FolderBox.Text = current.OutputFolder;
         FormatBox.SelectedItem = current.ScreenshotFormat;
-        LanguageBox.SelectedItem = current.Language;
+        LanguageBox.SelectedValue = current.Language;
         captureHotkey = current.CaptureHotkey;
         recordingHotkey = current.RecordingHotkey;
         CaptureHotkeyBox.Text = Describe(captureHotkey);
@@ -99,7 +109,7 @@ public partial class SettingsWindow : Window
     {
         using var dialog = new Forms.FolderBrowserDialog
         {
-            Description = "Choose where screenshots and recordings are saved",
+            Description = Localizer.Get("FolderDialogHint"),
             InitialDirectory = FolderBox.Text,
             UseDescriptionForTitle = true
         };
@@ -127,19 +137,19 @@ public partial class SettingsWindow : Window
     {
         if (captureHotkey == recordingHotkey)
         {
-            ErrorText.Text = "The two hotkeys must differ.";
+            ErrorText.Text = Localizer.Get("HotkeysDiffer");
             return;
         }
         if (string.IsNullOrWhiteSpace(FolderBox.Text))
         {
-            ErrorText.Text = "Choose a save folder.";
+            ErrorText.Text = Localizer.Get("ChooseFolder");
             return;
         }
         Result = settings with
         {
             OutputFolder = FolderBox.Text.Trim(),
             ScreenshotFormat = (ScreenshotFormat)FormatBox.SelectedItem,
-            Language = (InterfaceLanguage)LanguageBox.SelectedItem,
+            Language = (InterfaceLanguage)LanguageBox.SelectedValue,
             CaptureHotkey = captureHotkey,
             RecordingHotkey = recordingHotkey,
             StartWithWindows = StartWithWindowsBox.IsChecked == true,

@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using Skreen2Go.Windows.Core;
@@ -17,12 +18,20 @@ public static class ImageOutput
         var result = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
         try
         {
-            using var graphics = Graphics.FromImage(result);
-            graphics.DrawImageUnscaled(source, 0, 0);
-            graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            using (var graphics = Graphics.FromImage(result))
+                graphics.DrawImageUnscaled(source, 0, 0);
             foreach (var annotation in annotations)
-                Draw(graphics, annotation);
+            {
+                if (annotation.Kind == AnnotationKind.Blur)
+                    Blur(result, annotation.Rect, annotation.BlurRadius);
+                else
+                {
+                    using var graphics = Graphics.FromImage(result);
+                    graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+                    Draw(graphics, annotation);
+                }
+            }
             return result;
         }
         catch { result.Dispose(); throw; }
@@ -93,8 +102,78 @@ public static class ImageOutput
                         annotation.Rect.X, annotation.Rect.Y);
                 break;
             case AnnotationKind.Blur:
+                break;
             case AnnotationKind.Cursor:
+                graphics.DrawEllipse(pen, annotation.Rect.X, annotation.Rect.Y,
+                    annotation.Rect.Width, annotation.Rect.Height);
+                var centerX = annotation.Rect.X + annotation.Rect.Width / 2f;
+                var centerY = annotation.Rect.Y + annotation.Rect.Height / 2f;
+                graphics.DrawLine(pen, centerX - 5, centerY, centerX + 5, centerY);
+                graphics.DrawLine(pen, centerX, centerY - 5, centerX, centerY + 5);
                 break;
         }
+    }
+
+    private static void Blur(Bitmap bitmap, RectangleI area, int radius)
+    {
+        var clipped = SelectionGeometry.Clamp(area,
+            new RectangleI(0, 0, bitmap.Width, bitmap.Height));
+        if (clipped.IsEmpty) return;
+        var width = clipped.Width;
+        var height = clipped.Height;
+        radius = Math.Clamp(radius, 1, 40);
+        var rect = new Rectangle(clipped.X, clipped.Y, width, height);
+        var data = bitmap.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        try
+        {
+            var source = new byte[width * height * 4];
+            var horizontal = new byte[source.Length];
+            var blurred = new byte[source.Length];
+            for (var y = 0; y < height; y++)
+                Marshal.Copy(IntPtr.Add(data.Scan0, y * data.Stride), source,
+                    y * width * 4, width * 4);
+
+            for (var y = 0; y < height; y++)
+            for (var channel = 0; channel < 3; channel++)
+            {
+                var sum = 0;
+                for (var x = 0; x <= Math.Min(radius, width - 1); x++)
+                    sum += source[(y * width + x) * 4 + channel];
+                for (var x = 0; x < width; x++)
+                {
+                    var count = Math.Min(width - 1, x + radius) -
+                        Math.Max(0, x - radius) + 1;
+                    horizontal[(y * width + x) * 4 + channel] = (byte)(sum / count);
+                    if (x - radius >= 0)
+                        sum -= source[(y * width + x - radius) * 4 + channel];
+                    if (x + radius + 1 < width)
+                        sum += source[(y * width + x + radius + 1) * 4 + channel];
+                }
+            }
+
+            for (var x = 0; x < width; x++)
+            for (var channel = 0; channel < 3; channel++)
+            {
+                var sum = 0;
+                for (var y = 0; y <= Math.Min(radius, height - 1); y++)
+                    sum += horizontal[(y * width + x) * 4 + channel];
+                for (var y = 0; y < height; y++)
+                {
+                    var count = Math.Min(height - 1, y + radius) -
+                        Math.Max(0, y - radius) + 1;
+                    blurred[(y * width + x) * 4 + channel] = (byte)(sum / count);
+                    if (y - radius >= 0)
+                        sum -= horizontal[((y - radius) * width + x) * 4 + channel];
+                    if (y + radius + 1 < height)
+                        sum += horizontal[((y + radius + 1) * width + x) * 4 + channel];
+                }
+            }
+
+            for (var i = 3; i < blurred.Length; i += 4) blurred[i] = source[i];
+            for (var y = 0; y < height; y++)
+                Marshal.Copy(blurred, y * width * 4,
+                    IntPtr.Add(data.Scan0, y * data.Stride), width * 4);
+        }
+        finally { bitmap.UnlockBits(data); }
     }
 }

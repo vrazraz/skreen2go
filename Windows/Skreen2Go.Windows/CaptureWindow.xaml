@@ -16,7 +16,7 @@
             <Border Canvas.Left="24" Canvas.Top="24" Background="#DD182029"
                     CornerRadius="7" Padding="14,9">
                 <TextBlock x:Name="Instruction" Foreground="White" FontSize="14"
-                           Text="Drag to capture a region · Esc to cancel" />
+                           Text="{DynamicResource CaptureHint}" />
             </Border>
         </Canvas>
     </Grid>

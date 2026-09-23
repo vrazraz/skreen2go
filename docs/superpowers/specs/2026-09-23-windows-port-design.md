@@ -1,5 +1,10 @@
 # Windows port design
 
+Implementation note (2026-09-23): the runnable version in `Windows/` uses
+ScreenRecorderLib for MP4 capture, a WPF selection overlay, and GDI desktop
+snapshots. The original design below records the intended full-parity direction.
+See `WINDOWS-PORT.md` for the implemented scope and known limits.
+
 ## Goal and scope
 
 Build a native Windows desktop edition of Skreen2Go in the existing `windows-port` branch. The macOS code remains intact. The Windows edition retains the product workflow: launch from the notification area, invoke capture with a global shortcut, select a region or window, annotate it, copy or save an image, and record video with optional system and microphone audio.

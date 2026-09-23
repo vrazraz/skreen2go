@@ -1,5 +1,10 @@
 # Windows Capture Implementation Plan
 
+Status (2026-09-23): the initial capture/editor slice and further recording,
+settings and localization work have been implemented. `WINDOWS-PORT.md` lists
+the current behavior and remaining parity gaps. The unchecked steps below are
+the original execution checklist, retained as a record of the plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver a runnable Windows tray app that selects a screen region, annotates it, and copies or saves a full-resolution screenshot.

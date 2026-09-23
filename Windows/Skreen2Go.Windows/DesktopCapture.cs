@@ -9,11 +9,13 @@ internal sealed class DesktopCapture : IDisposable
 {
     public RectangleI Bounds { get; }
     public Bitmap Bitmap { get; }
+    public IReadOnlyList<RectangleI> Windows { get; }
 
-    private DesktopCapture(RectangleI bounds, Bitmap bitmap)
+    private DesktopCapture(RectangleI bounds, Bitmap bitmap, IReadOnlyList<RectangleI> windows)
     {
         Bounds = bounds;
         Bitmap = bitmap;
+        Windows = windows;
     }
 
     public static DesktopCapture Snapshot()
@@ -24,10 +26,11 @@ internal sealed class DesktopCapture : IDisposable
         var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb);
         try
         {
+            var windows = WindowCatalog.TopToBottom(bounds);
             using var graphics = Graphics.FromImage(bitmap);
             graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0,
                 new Size(bounds.Width, bounds.Height), CopyPixelOperation.SourceCopy);
-            return new DesktopCapture(bounds, bitmap);
+            return new DesktopCapture(bounds, bitmap, windows);
         }
         catch { bitmap.Dispose(); throw; }
     }
@@ -39,6 +42,8 @@ internal sealed class DesktopCapture : IDisposable
         return Bitmap.Clone(new Rectangle(local.X, local.Y, local.Width, local.Height),
             PixelFormat.Format32bppArgb);
     }
+
+    public RectangleI? WindowAt(PointI point) => WindowSelection.Pick(point, Windows);
 
     public void Dispose() => Bitmap.Dispose();
 }

@@ -21,6 +21,35 @@ public sealed class AnnotationSession
         return true;
     }
 
+    public int? HitTest(PointI point)
+    {
+        for (var index = annotations.Count - 1; index >= 0; index--)
+            if (AnnotationGeometry.Contains(annotations[index], point)) return index;
+        return null;
+    }
+
+    public void ReplaceAt(int index, Annotation annotation)
+    {
+        if (annotations[index] == annotation) return;
+        if (!AnnotationGeometry.IsMeaningful(annotation))
+            throw new ArgumentException("Annotation is empty.", nameof(annotation));
+        RecordUndo();
+        annotations[index] = annotation;
+    }
+
+    public void RemoveAt(int index)
+    {
+        RecordUndo();
+        annotations.RemoveAt(index);
+    }
+
+    public void Clear()
+    {
+        if (annotations.Count == 0) return;
+        RecordUndo();
+        annotations.Clear();
+    }
+
     public void Undo()
     {
         if (!undo.TryPop(out var previous)) return;

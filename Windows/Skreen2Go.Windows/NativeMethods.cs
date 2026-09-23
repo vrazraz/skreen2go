@@ -29,4 +29,42 @@ internal static partial class NativeMethods
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct NativePoint { public int X; public int Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct NativeRect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [LibraryImport("user32.dll")]
+    internal static partial IntPtr GetTopWindow(IntPtr window);
+
+    [LibraryImport("user32.dll")]
+    internal static partial IntPtr GetWindow(IntPtr window, uint command);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindowVisible(IntPtr window);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsIconic(IntPtr window);
+
+    [LibraryImport("user32.dll")]
+    internal static partial uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(IntPtr window, out NativeRect rect);
+
+    [LibraryImport("user32.dll")]
+    internal static partial int GetWindowTextLengthW(IntPtr window);
+
+    [LibraryImport("dwmapi.dll")]
+    internal static partial int DwmGetWindowAttribute(IntPtr window, uint attribute,
+        out NativeRect value, uint size);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    internal static partial int DwmGetWindowAttributeInt(IntPtr window, uint attribute,
+        out int value, uint size);
 }
