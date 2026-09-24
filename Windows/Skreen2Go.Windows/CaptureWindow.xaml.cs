@@ -25,7 +25,7 @@ namespace Skreen2Go.Windows;
 
 public partial class CaptureWindow : Window
 {
-    private enum Gesture { None, Creating, Moving, Resizing, Drawing }
+    private enum Gesture { None, Creating, Moving, Resizing, Drawing, MovingText }
 
     private static readonly uint[] PaletteColors =
     [
@@ -48,7 +48,8 @@ public partial class CaptureWindow : Window
     private Gesture gesture;
     private AnnotationKind? tool;
     private Annotation? draft;
-    private TextBox? textEntry;
+    private InlineTextEntry? textEntry;
+    private int? draggedTextIndex;
 
     public event Action<RectangleI, IReadOnlyList<Annotation>>? CaptureAccepted;
     public event Action<RectangleI, bool, bool>? RecordingAccepted;
@@ -130,9 +131,26 @@ public partial class CaptureWindow : Window
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (textEntry is not null) return;
         var point = CursorPoint();
         if (selection is { } frame)
         {
+            if (!recordingMode && Contains(frame, point))
+            {
+                var local = LocalPoint(frame, point);
+                for (var index = annotations.Annotations.Count - 1; index >= 0; index--)
+                {
+                    var existing = annotations.Annotations[index];
+                    if (existing.Kind != AnnotationKind.Text ||
+                        !AnnotationGeometry.Contains(existing, local)) continue;
+                    draggedTextIndex = index;
+                    gesture = Gesture.MovingText;
+                    gestureAnchor = point;
+                    gestureCurrent = point;
+                    CaptureMouse();
+                    return;
+                }
+            }
             if (!recordingMode && tool is not null && Contains(frame, point))
             {
                 if (tool == AnnotationKind.Text)
@@ -200,9 +218,20 @@ public partial class CaptureWindow : Window
             selection = capture.WindowAt(gestureAnchor);
         if (gesture == Gesture.Drawing && draft is not null)
             annotations.Add(draft);
+        if (gesture == Gesture.MovingText && draggedTextIndex is { } textIndex &&
+            selection is { } textFrame)
+        {
+            var moved = Math.Abs(gestureCurrent.X - gestureAnchor.X) >= 4 ||
+                        Math.Abs(gestureCurrent.Y - gestureAnchor.Y) >= 4;
+            if (moved && draft is not null)
+                annotations.ReplaceAt(textIndex, draft);
+            else
+                Dispatcher.BeginInvoke(() => EditText(textIndex, textFrame, gestureAnchor));
+        }
         if (selection is { } frame && (frame.Width < 8 || frame.Height < 8))
             selection = null;
         draft = null;
+        draggedTextIndex = null;
         gesture = Gesture.None;
         DrawSelection();
         ShowPanel();
@@ -229,6 +258,13 @@ public partial class CaptureWindow : Window
             case Gesture.Drawing:
                 draft = DraftAnnotation();
                 break;
+            case Gesture.MovingText:
+                if (selection is { } textFrame && draggedTextIndex is { } index)
+                    draft = AnnotationGeometry.Move(annotations.Annotations[index],
+                        gestureCurrent.X - gestureAnchor.X,
+                        gestureCurrent.Y - gestureAnchor.Y,
+                        new RectangleI(0, 0, textFrame.Width, textFrame.Height));
+                break;
         }
         DrawSelection();
     }
@@ -246,6 +282,10 @@ public partial class CaptureWindow : Window
     private void UpdateCursor(PointI point)
     {
         if (selection is not { } frame) { Cursor = Cursors.Cross; return; }
+        if (!recordingMode && Contains(frame, point) &&
+            annotations.Annotations.Any(a => a.Kind == AnnotationKind.Text &&
+                AnnotationGeometry.Contains(a, LocalPoint(frame, point))))
+        { Cursor = Cursors.IBeam; return; }
         if (!recordingMode && tool is not null && Contains(frame, point))
         { Cursor = Cursors.Cross; return; }
         Cursor = LiveSelectionGeometry.HandleAt(frame, point) switch
@@ -312,8 +352,9 @@ public partial class CaptureWindow : Window
         Canvas.SetLeft(SizeBadge, Math.Clamp(box.Left, 0,
             Math.Max(0, Root.ActualWidth - SizeBadge.DesiredSize.Width)));
         Canvas.SetTop(SizeBadge, box.Top >= 28 ? box.Top - 28 : box.Bottom + 7);
-        foreach (var annotation in annotations.Annotations)
-            DrawAnnotation(annotation, frame);
+        for (var index = 0; index < annotations.Annotations.Count; index++)
+            if (!(gesture == Gesture.MovingText && index == draggedTextIndex))
+                DrawAnnotation(annotations.Annotations[index], frame);
         if (draft is not null && AnnotationGeometry.IsMeaningful(draft))
             DrawAnnotation(draft, frame);
     }
@@ -389,7 +430,12 @@ public partial class CaptureWindow : Window
                 {
                     Text = annotation.Text, Foreground = brush,
                     FontSize = Math.Max(8, scaled.Y - origin.Y),
-                    FontFamily = new FontFamily("Segoe UI")
+                    FontFamily = new FontFamily("Segoe UI"),
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = Math.Max(1, annotation.Rect.Width > 0
+                        ? OnOverlay(new PointI(frame.X + annotation.Rect.Right,
+                            frame.Y)).X - origin.X
+                        : OnOverlay(new PointI(frame.Right, frame.Y)).X - origin.X)
                 };
                 Canvas.SetLeft(text, origin.X);
                 Canvas.SetTop(text, origin.Y);
@@ -468,22 +514,71 @@ public partial class CaptureWindow : Window
     private void AddText(PointI point)
     {
         if (selection is not { } frame || textEntry is not null) return;
-        HidePanel();
+        point = new PointI(Math.Min(point.X, Math.Max(0, frame.Width - 80)),
+            Math.Min(point.Y, Math.Max(0, frame.Height - 36)));
         var origin = OnOverlay(new PointI(frame.X + point.X, frame.Y + point.Y));
         var scale = OnOverlay(new PointI(frame.X + point.X,
             frame.Y + point.Y + (int)Math.Ceiling(settings.TextSize)));
         var fontSize = Math.Max(8, scale.Y - origin.Y);
+        var editorRight = OnOverlay(new PointI(frame.X + Math.Min(frame.Width,
+            point.X + 340), frame.Y)).X;
         textEntry = InlineTextEntry.Show(HudCanvas, origin, fontSize,
             new SolidColorBrush(ColorFromArgb(currentColor)),
-            Math.Min(340, Root.ActualWidth - origin.X - 8),
+            editorRight - origin.X,
             value =>
             {
+                var rect = TextAnnotationLayout.Measure(value, point, settings.TextSize,
+                    new RectangleI(0, 0, frame.Width, frame.Height));
                 annotations.Add(new Annotation(AnnotationKind.Text, default, default,
-                    new RectangleI(point.X, point.Y, 0, 0), value,
+                    rect, value,
                     currentColor, settings.AnnotationThickness, 1, settings.TextSize));
                 DrawSelection();
             },
-            () => { textEntry = null; ShowPanel(); });
+            () => textEntry = null);
+    }
+
+    private void EditText(int index, RectangleI frame, PointI clickedAt)
+    {
+        if (textEntry is not null || index >= annotations.Annotations.Count) return;
+        var annotation = annotations.Annotations[index];
+        var origin = OnOverlay(new PointI(frame.X + annotation.Rect.X,
+            frame.Y + annotation.Rect.Y));
+        var fontEnd = OnOverlay(new PointI(frame.X + annotation.Rect.X,
+            frame.Y + annotation.Rect.Y + (int)Math.Ceiling(annotation.FontSize)));
+        var clicked = OnOverlay(clickedAt);
+        var editorRight = OnOverlay(new PointI(frame.X + Math.Min(frame.Width,
+            annotation.Rect.X + 340), frame.Y)).X;
+        textEntry = InlineTextEntry.Show(HudCanvas, origin,
+            Math.Max(8, fontEnd.Y - origin.Y),
+            new SolidColorBrush(ColorFromArgb(annotation.Color)),
+            editorRight - origin.X,
+            value =>
+            {
+                var rect = TextAnnotationLayout.Measure(value,
+                    new PointI(annotation.Rect.X, annotation.Rect.Y),
+                    annotation.FontSize, new RectangleI(0, 0, frame.Width, frame.Height));
+                annotations.ReplaceAt(index, annotation with { Text = value, Rect = rect });
+                DrawSelection();
+            },
+            () => textEntry = null, annotation.Text,
+            new WpfPoint(clicked.X - origin.X, clicked.Y - origin.Y));
+    }
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (textEntry is null || e.OriginalSource is not DependencyObject source ||
+            textEntry.Contains(source)) return;
+        textEntry.Commit();
+        // A click on the toolbar still invokes its button after committing text.
+        if (!IsInside(source, ActionPanel)) e.Handled = true;
+    }
+
+    private static bool IsInside(DependencyObject source, DependencyObject target)
+    {
+        for (DependencyObject? current = source; current is not null;
+            current = VisualTreeHelper.GetParent(current))
+            if (ReferenceEquals(current, target)) return true;
+        return false;
     }
 
     private void SetTool(AnnotationKind kind)

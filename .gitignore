@@ -16,3 +16,6 @@ DerivedData/
 # .NET build output
 **/bin/
 **/obj/
+
+# Animation exporter dependencies
+**/node_modules/

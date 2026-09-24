@@ -69,7 +69,7 @@ public static class AnnotationGeometry
             return distance <= Math.Max(6, annotation.Thickness + 3);
         }
         var rect = annotation.Rect;
-        if (annotation.Kind == AnnotationKind.Text)
+        if (annotation.Kind == AnnotationKind.Text && rect.IsEmpty)
             rect = rect with
             {
                 Width = (int)Math.Ceiling(annotation.Text.Length * annotation.FontSize * .6),

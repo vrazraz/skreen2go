@@ -20,6 +20,6 @@
     <PackageReference Include="ScreenRecorderLib" Version="7.0.1" />
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Resources/Hand.png" />
+    <Resource Include="Resources/HandFrames/*.png" />
   </ItemGroup>
 </Project>

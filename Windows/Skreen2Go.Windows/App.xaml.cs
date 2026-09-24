@@ -90,6 +90,7 @@ public partial class App : System.Windows.Application
             tray.ShowBalloonTip(4000, "Skreen2Go", Localizer.Get("HotkeyInUse"),
                 Forms.ToolTipIcon.Warning);
         }
+        Dispatcher.BeginInvoke(CaptureFeedback.Prepare, DispatcherPriority.ApplicationIdle);
     }
 
     private IntPtr HotkeyHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam,

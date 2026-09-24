@@ -253,6 +253,22 @@ var tests = new (string Name, Action Run)[]
         session.Undo();
         Equal(shape, session.Annotations[0]);
     }),
+    ("Text hit testing follows its stored bounds", () =>
+    {
+        var text = new Annotation(AnnotationKind.Text, default, default,
+            new RectangleI(10, 12, 35, 25), "A very long caption", 0xFFFFFFFF, 1, 1, 24);
+        Equal(true, AnnotationGeometry.Contains(text, new PointI(20, 20)));
+        Equal(false, AnnotationGeometry.Contains(text, new PointI(60, 20)));
+        Equal(false, AnnotationGeometry.Contains(text, new PointI(20, 40)));
+    }),
+    ("Text movement stays within the screenshot", () =>
+    {
+        var text = new Annotation(AnnotationKind.Text, default, default,
+            new RectangleI(10, 12, 35, 25), "Caption", 0xFFFFFFFF, 1, 1, 24);
+        Equal(new RectangleI(65, 55, 35, 25),
+            AnnotationGeometry.Move(text, 500, 500,
+                new RectangleI(0, 0, 100, 80)).Rect);
+    }),
     ("Selection chooses the topmost annotation and deletion can be undone", () =>
     {
         var session = new AnnotationSession();

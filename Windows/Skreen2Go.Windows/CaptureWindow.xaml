@@ -4,7 +4,8 @@
         WindowStyle="None" ResizeMode="NoResize" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False" Topmost="True"
         Focusable="True" Cursor="Cross" Title="Skreen2Go selection"
-        KeyDown="OnKeyDown" MouseLeftButtonDown="OnMouseDown"
+        KeyDown="OnKeyDown" PreviewMouseDown="OnPreviewMouseDown"
+        MouseLeftButtonDown="OnMouseDown"
         MouseMove="OnMouseMove" MouseLeftButtonUp="OnMouseUp">
     <Window.Resources>
         <Style x:Key="PanelButton" TargetType="Button">

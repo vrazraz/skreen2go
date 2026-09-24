@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export": "node export.mjs"
+  },
+  "dependencies": {
+    "@rive-app/canvas": "2.43.0",
+    "playwright": "1.63.0"
+  }
+}

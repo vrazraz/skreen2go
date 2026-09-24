@@ -19,8 +19,9 @@ internal sealed class CaptureFeedback : Window
 {
     private readonly Canvas canvas = new();
     private readonly Border thumbnail;
-    private readonly System.Windows.Shapes.Rectangle hand;
-    private readonly RotateTransform handRotation = new();
+    private readonly Image hand;
+    private static readonly Lazy<BitmapImage[]> handFrames = new(LoadHandFrames);
+    private BitmapImage[]? frames;
     private readonly Stopwatch clock = new();
     private readonly RectangleI sourceRect;
     private readonly PointI trayPoint;
@@ -63,20 +64,10 @@ internal sealed class CaptureFeedback : Window
         };
         canvas.Children.Add(thumbnail);
 
-        var handMask = new BitmapImage(new Uri(
-            "pack://application:,,,/Skreen2Go.Windows;component/Resources/Hand.png"));
-        hand = new System.Windows.Shapes.Rectangle
+        hand = new Image
         {
-            Width = 190,
-            Height = 378,
-            Fill = new SolidColorBrush(Color.FromRgb(245, 222, 205)),
-            OpacityMask = new ImageBrush(handMask) { Stretch = Stretch.Fill },
-            Effect = new DropShadowEffect
-            {
-                BlurRadius = 12, ShadowDepth = 5, Opacity = .3, Color = Colors.Black
-            },
-            RenderTransformOrigin = new WpfPoint(.5, .5),
-            RenderTransform = handRotation
+            Stretch = Stretch.Fill,
+            IsHitTestVisible = false
         };
         canvas.Children.Add(hand);
         Content = canvas;
@@ -100,6 +91,9 @@ internal sealed class CaptureFeedback : Window
             destination = ToLocal(trayPoint);
             cardWidth = Math.Clamp(origin.Width * .75, 90, 300);
             cardHeight = Math.Clamp(cardWidth * aspect, 45, 210);
+            PlaceHand();
+            try { frames = handFrames.Value; hand.Source = frames[0]; }
+            catch { hand.Visibility = Visibility.Collapsed; }
             clock.Start();
             CompositionTarget.Rendering += RenderFrame;
         };
@@ -112,8 +106,50 @@ internal sealed class CaptureFeedback : Window
         catch { /* The visual is optional; clipboard content is already available. */ }
     }
 
+    public static void Prepare()
+    {
+        try { _ = handFrames.Value; }
+        catch { /* Clipboard feedback remains optional. */ }
+    }
+
     private WpfPoint ToLocal(PointI screen) =>
         PointFromScreen(new WpfPoint(screen.X, screen.Y));
+
+    private static BitmapImage[] LoadHandFrames()
+    {
+        var frames = new BitmapImage[49];
+        for (var index = 0; index < frames.Length; index++)
+        {
+            var image = new BitmapImage(new Uri(
+                $"pack://application:,,,/Skreen2Go.Windows;component/Resources/HandFrames/{index:000}.png"));
+            image.Freeze();
+            frames[index] = image;
+        }
+        return frames;
+    }
+
+    private void PlaceHand()
+    {
+        var centre = new System.Drawing.Point(sourceRect.X + sourceRect.Width / 2,
+            sourceRect.Y + sourceRect.Height / 2);
+        var screen = Forms.Screen.FromPoint(centre).Bounds;
+        var width = Math.Min(screen.Width * .62, 1000);
+        var height = width * 982 / 1512;
+        var left = Clamp(centre.X - width / 2, screen.Left, screen.Right - width);
+        // AppKit's positive Y points upward; WPF's points downward.
+        var top = Clamp(centre.Y - height / 2 - height * .15,
+            screen.Top, screen.Bottom - height);
+        var start = ToLocal(new PointI((int)Math.Round(left), (int)Math.Round(top)));
+        var end = ToLocal(new PointI((int)Math.Round(left + width),
+            (int)Math.Round(top + height)));
+        hand.Width = end.X - start.X;
+        hand.Height = end.Y - start.Y;
+        Canvas.SetLeft(hand, start.X);
+        Canvas.SetTop(hand, start.Y);
+    }
+
+    private static double Clamp(double value, double lower, double upper) =>
+        upper > lower ? Math.Clamp(value, lower, upper) : (lower + upper) / 2;
 
     private void RenderFrame(object? sender, EventArgs e)
     {
@@ -134,15 +170,9 @@ internal sealed class CaptureFeedback : Window
         Canvas.SetLeft(thumbnail, x - thumbnail.Width / 2);
         Canvas.SetTop(thumbnail, y - thumbnail.Height / 2);
 
-        var reach = Math.Clamp(seconds / .30, 0, 1);
-        var retreat = Math.Clamp((seconds - .43) / .42, 0, 1);
-        var handX = centreX + Math.Min(cardWidth * .35, 85);
-        var handY = centreY - 345 + 95 * reach - 160 * retreat;
-        Canvas.SetLeft(hand, handX);
-        Canvas.SetTop(hand, handY);
-        handRotation.Angle = -13 + 17 * reach - 10 * retreat;
-        hand.Opacity = Math.Min(1, seconds / .10) *
-            Math.Clamp((.87 - seconds) / .24, 0, 1);
+        var index = (int)(seconds * 60);
+        if (frames is not null)
+            hand.Source = index < frames.Length ? frames[index] : null;
     }
 
     private static PointI FindTrayTarget()

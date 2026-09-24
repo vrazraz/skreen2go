@@ -22,7 +22,8 @@ public partial class EditorWindow : Window
     private int? selectedIndex;
     private PointI? dragStart;
     private PointI? dragEnd;
-    private TextBox? textEntry;
+    private InlineTextEntry? textEntry;
+    private bool draggingExistingText;
 
     public EditorWindow(Bitmap source, AppSettings settings,
         IEnumerable<Annotation>? initialAnnotations = null)
@@ -52,7 +53,21 @@ public partial class EditorWindow : Window
 
     private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
     {
+        if (textEntry is not null) return;
         var point = ImagePoint(e.GetPosition(DrawingCanvas));
+        for (var index = session.Annotations.Count - 1; index >= 0; index--)
+        {
+            var existing = session.Annotations[index];
+            if (existing.Kind != AnnotationKind.Text ||
+                !AnnotationGeometry.Contains(existing, point)) continue;
+            selectedIndex = index;
+            draggingExistingText = true;
+            dragStart = point;
+            dragEnd = point;
+            DrawingCanvas.CaptureMouse();
+            DrawAnnotations();
+            return;
+        }
         if (tool is null)
         {
             selectedIndex = session.HitTest(point);
@@ -65,6 +80,9 @@ public partial class EditorWindow : Window
         if (tool == AnnotationKind.Text)
         {
             if (textEntry is not null) return;
+            selectedIndex = null;
+            point = new PointI(Math.Min(point.X, Math.Max(0, source.Width - 80)),
+                Math.Min(point.Y, Math.Max(0, source.Height - 36)));
             textEntry = InlineTextEntry.Show(DrawingCanvas,
                 new WpfPoint(point.X, point.Y), settings.TextSize,
                 new SolidColorBrush(System.Windows.Media.Color.FromArgb(
@@ -75,8 +93,10 @@ public partial class EditorWindow : Window
                 Math.Min(340, source.Width - point.X - 8),
                 value =>
                 {
+                    var rect = TextAnnotationLayout.Measure(value, point, settings.TextSize,
+                        new RectangleI(0, 0, source.Width, source.Height));
                     session.Add(new Annotation(AnnotationKind.Text, default, default,
-                        new RectangleI(point.X, point.Y, 0, 0), value,
+                        rect, value,
                         settings.AnnotationColor, settings.AnnotationThickness, 1,
                         settings.TextSize));
                     DrawAnnotations();
@@ -110,21 +130,68 @@ public partial class EditorWindow : Window
         dragEnd = ImagePoint(e.GetPosition(DrawingCanvas));
         DrawingCanvas.ReleaseMouseCapture();
         var annotation = CurrentDrag();
+        var clickedText = draggingExistingText && selectedIndex is { } index &&
+            Math.Abs(dragEnd.Value.X - dragStart.Value.X) < 4 &&
+            Math.Abs(dragEnd.Value.Y - dragStart.Value.Y) < 4;
+        var clickedPoint = dragEnd.Value;
         dragStart = null;
         dragEnd = null;
+        draggingExistingText = false;
         if (annotation is not null)
         {
-            if (tool is null && selectedIndex is not null)
+            if (clickedText) { DrawAnnotations(); EditText(selectedIndex!.Value, clickedPoint); return; }
+            if ((tool is null || annotation.Kind == AnnotationKind.Text) && selectedIndex is not null)
                 session.ReplaceAt(selectedIndex.Value, annotation);
             else session.Add(annotation);
         }
         DrawAnnotations();
     }
 
+    private void EditText(int index, PointI clickedAt)
+    {
+        if (textEntry is not null || index >= session.Annotations.Count) return;
+        var annotation = session.Annotations[index];
+        var origin = new WpfPoint(annotation.Rect.X, annotation.Rect.Y);
+        var color = System.Windows.Media.Color.FromArgb(
+            (byte)(annotation.Color >> 24), (byte)(annotation.Color >> 16),
+            (byte)(annotation.Color >> 8), (byte)annotation.Color);
+        textEntry = InlineTextEntry.Show(DrawingCanvas, origin,
+            annotation.FontSize, new SolidColorBrush(color),
+            Math.Min(340, source.Width - annotation.Rect.X),
+            value =>
+            {
+                var rect = TextAnnotationLayout.Measure(value,
+                    new PointI(annotation.Rect.X, annotation.Rect.Y),
+                    annotation.FontSize,
+                    new RectangleI(0, 0, source.Width, source.Height));
+                session.ReplaceAt(index, annotation with { Text = value, Rect = rect });
+                DrawAnnotations();
+            },
+            () => textEntry = null, annotation.Text,
+            new WpfPoint(clickedAt.X - origin.X, clickedAt.Y - origin.Y));
+    }
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (textEntry is null || e.OriginalSource is not DependencyObject source ||
+            textEntry.Contains(source)) return;
+        textEntry.Commit();
+        if (!IsInside(source, DrawingCanvas)) return;
+        e.Handled = true;
+    }
+
+    private static bool IsInside(DependencyObject source, DependencyObject target)
+    {
+        for (DependencyObject? current = source; current is not null;
+            current = VisualTreeHelper.GetParent(current))
+            if (ReferenceEquals(current, target)) return true;
+        return false;
+    }
+
     private Annotation? CurrentDrag()
     {
         if (dragStart is null || dragEnd is null) return null;
-        if (tool is null)
+        if (tool is null || draggingExistingText)
         {
             if (selectedIndex is null) return null;
             return AnnotationGeometry.Move(session.Annotations[selectedIndex.Value],
@@ -157,7 +224,7 @@ public partial class EditorWindow : Window
         var rect = annotation.Kind == AnnotationKind.Arrow
             ? SelectionGeometry.Normalize(annotation.Start, annotation.End)
             : annotation.Rect;
-        if (annotation.Kind == AnnotationKind.Text)
+        if (annotation.Kind == AnnotationKind.Text && rect.IsEmpty)
             rect = rect with
             {
                 Width = (int)Math.Ceiling(annotation.Text.Length * annotation.FontSize * .6),
@@ -223,7 +290,10 @@ public partial class EditorWindow : Window
                     Text = annotation.Text,
                     Foreground = brush,
                     FontSize = annotation.FontSize,
-                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI")
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = Math.Max(1, annotation.Rect.Width > 0
+                        ? annotation.Rect.Width : source.Width - annotation.Rect.X)
                 };
                 Canvas.SetLeft(text, annotation.Rect.X);
                 Canvas.SetTop(text, annotation.Rect.Y);

@@ -97,9 +97,13 @@ public static class ImageOutput
                 break;
             case AnnotationKind.Text:
                 using (var brush = new SolidBrush(color))
-                using (var font = new Font("Segoe UI", Math.Max(8, annotation.FontSize)))
+                using (var font = new Font("Segoe UI", Math.Max(8, annotation.FontSize),
+                    System.Drawing.FontStyle.Regular, GraphicsUnit.Pixel))
                     graphics.DrawString(annotation.Text, font, brush,
-                        annotation.Rect.X, annotation.Rect.Y);
+                        new RectangleF(annotation.Rect.X, annotation.Rect.Y,
+                            annotation.Rect.Width > 0 ? annotation.Rect.Width : 10000,
+                            annotation.Rect.Height > 0 ? annotation.Rect.Height : 10000),
+                        StringFormat.GenericTypographic);
                 break;
             case AnnotationKind.Blur:
                 break;

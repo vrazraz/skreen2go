@@ -4,7 +4,7 @@
         Title="{DynamicResource EditorTitle}" Width="1100" Height="760"
         MinWidth="700" MinHeight="480" WindowStartupLocation="CenterScreen"
         Background="#171B22" Foreground="#F5F7FA"
-        KeyDown="OnKeyDown">
+        KeyDown="OnKeyDown" PreviewMouseDown="OnPreviewMouseDown">
     <Window.Resources>
         <Style TargetType="Button">
             <Setter Property="Background" Value="#303947" />
@@ -45,7 +45,7 @@
                          VerticalAlignment="Top">
                     <Grid x:Name="ImageSurface">
                         <Image x:Name="ScreenshotImage" Stretch="Fill" IsHitTestVisible="False" />
-                        <Canvas x:Name="DrawingCanvas" Background="Transparent"
+                        <Canvas x:Name="DrawingCanvas" Background="Transparent" ClipToBounds="True"
                                 MouseLeftButtonDown="OnCanvasMouseDown"
                                 MouseMove="OnCanvasMouseMove"
                                 MouseLeftButtonUp="OnCanvasMouseUp" />
